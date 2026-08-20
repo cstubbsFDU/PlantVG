@@ -1,6 +1,0 @@
-streamlit
-numpy
-scipy
-opencv-python
-scikit-image
-tifffile
