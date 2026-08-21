@@ -1,6 +1,6 @@
 function [] = PlantVG()
 
-%%%% Current Version 1.0 (2026-08-20) %%%%
+%%%% Current Version 1.1.0 (2026-08-20) %%%%
 clc; clear all;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -154,7 +154,7 @@ Std = std(height);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Define the display names for the dialog box on a single line
-listOptions = {'Normal', 'Chi-square', 'Exponential', 'Gamma', 'Poisson', 'Uniform', 'Weibull'};
+listOptions = {'Normal', 'Exponential', 'Gamma', 'Poisson', 'Weibull'};
 
 % Open the selection dialog box
 [indx, tf] = listdlg('PromptString', 'Select a probability distribution:', ...
@@ -167,16 +167,12 @@ if tf
     switch listOptions{indx}
         case 'Normal'
             distributionSelection = 'Normal';
-        case 'Chi-square'
-            distributionSelection = 'Chisquare';
         case 'Exponential'
             distributionSelection = 'Exponential';
         case 'Gamma'
             distributionSelection = 'Gamma';
         case 'Poisson'
             distributionSelection = 'Poisson';
-        case 'Uniform'
-            distributionSelection = 'Uniform';
         case 'Weibull'
             distributionSelection = 'Weibull';
     end
@@ -403,6 +399,6 @@ for quant = 1:model_quant
     
 
 %output info
-disp(string(model_quant) + ' ' + string(dialogue_answer{6}) + ' model(s) successfully created as a ' + num2str(size(outputMatrix,1)) + ' x ' + num2str(size(outputMatrix,2)) + ' x ' + num2str(size(outputMatrix,3)) + ' voxel TIFF and INP file(s)');
+disp(string(model_quant) + ' ' + string(dialogue_answer{6}) + ' model(s) successfully created as a ' + num2str(size(outputMatrix,1)) + ' x ' + num2str(size(outputMatrix,2)) + ' x ' + num2str(size(outputMatrix,3)) + ' voxel TIFF file(s)');
 
 end
