@@ -1,6 +1,6 @@
 function [] = PlantVG()
 
-%%%% Current Version 1.1.0 (2026-08-20) %%%%
+%%%% Current Version 1.1.0 (2026-08-21) %%%%
 clc; clear all;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -132,7 +132,8 @@ while ~isCorrect
     end
 end
  
-hist(lengthFactor*heightPre);
+heightPre = lengthFactor * heightPre;
+hist(heightPre);
 title('Click the lower and upper cell length filter...')
 [filtervalx, filtervaly] = ginput(2);
 n = 1;
@@ -143,8 +144,6 @@ for i = 1:size(heightPre,2)
     end
 end
 close
-
-height = lengthFactor*height;
 
 Avg = mean(height);
 Std = std(height);
