@@ -4,4 +4,4 @@ PlantVG is a custom MATLAB-based computational tool designed to generate fully t
 
 For example files, see the "Examples" folders of input slices and output voxel meshes.
 
-There is also a ported Python version hosted on Google Collab, here: https://colab.research.google.com/github/cstubbsFDU/PlantVG/blob/main/PlantVG_Colab.ipynb
+There is also a ported Python version hosted on Google Colab, here: https://colab.research.google.com/github/cstubbsFDU/PlantVG/blob/main/PlantVG_Colab.ipynb
