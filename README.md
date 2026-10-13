@@ -10,7 +10,7 @@ There are 3 ways to use this program:
 2. Run it using Google Colab (Python script), here: https://colab.research.google.com/github/cstubbsFDU/PlantVG/blob/main/PlantVG_Colab.ipynb
 3. Donwnload the PlantVG.m file and run it within your Matlab environment.
 
-
+For a detailed explanation of the process and code, download and open the explainer html file: "PlantVG_ How the Plant Voxel Generator Works.html"
 
 
 
