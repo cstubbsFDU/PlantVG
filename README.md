@@ -1,10 +1,14 @@
 **** Plant Voxel Generator (PlantVG) ****
 
-PlantVG is a custom MATLAB-based computational tool designed to generate fully three-dimensional (3D) voxel finite element models of herbaceous stem cellular microstructure using only a pair of 2D optical microscopy or computed tomography (CT) slices (transverse and longitudinal). Simply donwload the PlantVG.m and run it within your Matlab environment.
+PlantVG is a custom computational tool designed to generate fully three-dimensional (3D) voxel finite element models of herbaceous stem cellular microstructure using only a pair of 2D optical microscopy or computed tomography (CT) slices (transverse and longitudinal).
 
 For example files, see the "Examples" folders of input slices and output voxel meshes.
 
-There is also a ported Python version hosted on Google Colab, here: https://colab.research.google.com/github/cstubbsFDU/PlantVG/blob/main/PlantVG_Colab.ipynb
+There are 3 ways to use this program:
+
+1. Download and run the standalone html file.
+2. Run it using Google Colab (Python script), here: https://colab.research.google.com/github/cstubbsFDU/PlantVG/blob/main/PlantVG_Colab.ipynb
+3. Donwnload the PlantVG.m file and run it within your Matlab environment.
 
 
 
