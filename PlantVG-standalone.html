@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PlantVG: plant voxel generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EEF1EC; --surface:#F8FAF7; --ink:#1D2A22; --muted:#55645A; --line:#C6D0C8;
+  --accent:#A1235A; --accent-ink:#FFFFFF; --accent-soft:#F3DCE6; --green:#2C6E52;
+  --viewer:#E2E8E1; --wall3d:#C0477D; --cut3d:#5C1B39; --warn:#8A4B00; --err:#A3201B;
+  --plot-bar:#4F7FD6; --plot-fit:#C0392B;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#151B17; --surface:#1C241F; --ink:#E3EAE5; --muted:#9DAAA1; --line:#34413A;
+    --accent:#E27AA6; --accent-ink:#22101A; --accent-soft:#3A2230; --green:#78C49F;
+    --viewer:#0F1411; --wall3d:#D9659A; --cut3d:#4A1830; --warn:#E3A857; --err:#F0857F;
+    --plot-bar:#7FA6EE; --plot-fit:#F07A6A; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#151B17; --surface:#1C241F; --ink:#E3EAE5; --muted:#9DAAA1; --line:#34413A;
+  --accent:#E27AA6; --accent-ink:#22101A; --accent-soft:#3A2230; --green:#78C49F;
+  --viewer:#0F1411; --wall3d:#D9659A; --cut3d:#4A1830; --warn:#E3A857; --err:#F0857F;
+  --plot-bar:#7FA6EE; --plot-fit:#F07A6A; color-scheme:dark;
+}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:17px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:0 clamp(16px,4vw,40px)}
+header{padding:clamp(28px,6vw,64px) 0 28px}
+h1{font-size:clamp(2.4rem,6vw,3.6rem);line-height:1;margin:0 0 .35em;letter-spacing:-.02em}
+h1 small{display:block;font-size:.36em;font-weight:400;letter-spacing:0;color:var(--muted);margin-top:.5em;line-height:1.35;max-width:36em}
+.credit{color:var(--muted);font-size:.9rem;max-width:62ch;margin:0}
+.credit strong{color:var(--ink)}
+.step{display:grid;grid-template-columns:72px minmax(0,1fr);gap:0 24px;padding:32px 0;border-top:1px solid var(--line)}
+.num{font-size:2.6rem;font-weight:700;line-height:1;color:var(--accent);font-variant-numeric:tabular-nums}
+.step[aria-disabled="true"] .num{color:var(--line)}
+.step[aria-disabled="true"] .body > *:not(h2):not(.lede){opacity:.45;pointer-events:none}
+h2{font-size:1.45rem;margin:.1em 0 .3em;line-height:1.2}
+.lede{color:var(--muted);margin:0 0 20px;max-width:68ch}
+@media (max-width:680px){.step{grid-template-columns:1fr}.num{font-size:1.8rem;margin-bottom:6px}}
+
+/* drop zones */
+.drops{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:680px){.drops{grid-template-columns:1fr}}
+.drop{position:relative;display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:220px;padding:18px;border:2px dashed var(--line);border-radius:10px;background:var(--surface);cursor:pointer;text-align:center;transition:border-color .15s,background .15s;color:var(--ink);font:inherit;width:100%}
+.drop:hover{border-color:var(--muted)}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop.filled{border-style:solid;padding:10px;justify-content:flex-start}
+.drop .t{font-weight:700;font-size:1.1rem}
+.drop .s{color:var(--muted);font-size:.92rem;margin-top:4px}
+.drop canvas{max-width:100%;max-height:280px;image-rendering:pixelated;border-radius:4px;background:#000}
+.drop .meta{display:flex;justify-content:space-between;width:100%;gap:8px;font-size:.88rem;color:var(--muted);margin-top:8px;text-align:left}
+.drop .meta b{color:var(--ink);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin-top:14px}
+
+button,.btn{font:inherit;font-size:.95rem;border-radius:8px;padding:9px 16px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+button:hover{border-color:var(--muted)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700;padding:11px 22px}
+button.primary:hover{filter:brightness(1.07)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.link{border:0;background:none;padding:4px 0;color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* params */
+.params{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px 20px}
+.field label{display:block;font-weight:700;font-size:.95rem}
+.field .hint{display:block;color:var(--muted);font-size:.85rem;line-height:1.35;margin:2px 0 6px}
+input[type=number],input[type=text],select{width:100%;font:inherit;font-size:1rem;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font-variant-numeric:tabular-nums}
+.readout{margin-top:20px;padding:14px 16px;background:var(--surface);border-left:3px solid var(--green);border-radius:0 6px 6px 0;font-variant-numeric:tabular-nums;display:grid;grid-template-columns:max-content 1fr;gap:3px 18px;font-size:.95rem}
+.readout dt{color:var(--muted)} .readout dd{margin:0}
+.errors{color:var(--err);margin:14px 0 0;padding-left:1.1em}
+.msg{margin:12px 0 0;font-size:.95rem}
+.msg.err{color:var(--err)} .msg.warn{color:var(--warn)}
+
+.figs{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+@media (max-width:780px){.figs{grid-template-columns:1fr}}
+figure{margin:0}
+figure canvas{width:100%;height:auto;display:block;border-radius:6px;background:var(--surface)}
+figcaption{font-size:.9rem;color:var(--muted);margin-top:6px}
+.trace-c{background:#000 !important}
+.check{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:.95rem}
+.check input{width:18px;height:18px;accent-color:var(--accent)}
+
+/* range */
+.range{position:relative;height:36px;margin:8px 0 2px}
+.range input{position:absolute;inset:0;width:100%;margin:0;background:none;pointer-events:none;-webkit-appearance:none;appearance:none;height:36px}
+.range input::-webkit-slider-thumb{pointer-events:auto;-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);border:3px solid var(--surface);box-shadow:0 0 0 1px var(--accent);cursor:grab}
+.range input::-moz-range-thumb{pointer-events:auto;width:16px;height:16px;border-radius:50%;background:var(--accent);border:3px solid var(--surface);box-shadow:0 0 0 1px var(--accent);cursor:grab}
+.range .track{position:absolute;left:0;right:0;top:16px;height:4px;background:var(--line);border-radius:2px}
+.range .fill{position:absolute;top:16px;height:4px;background:var(--accent);border-radius:2px}
+.range-nums{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:.95rem}
+.range-nums input{width:110px}
+.lengths{font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums;word-break:break-word;margin-top:10px}
+
+.stats{font-variant-numeric:tabular-nums;font-size:.98rem;margin:0 0 14px;line-height:1.7}
+
+/* generate */
+.progress{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:14px;max-width:520px}
+.progress div{height:100%;width:0;background:var(--accent);transition:width .1s}
+.viewer-wrap{margin-top:24px;border-radius:12px;overflow:hidden;background:var(--viewer);position:relative}
+#viewer{display:block;width:100%;height:min(68vh,620px);min-height:360px;touch-action:none;cursor:grab}
+#viewer:active{cursor:grabbing}
+.vbar{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center;padding:12px 16px;background:var(--surface);border-top:1px solid var(--line);font-size:.92rem}
+.vbar label{display:flex;align-items:center;gap:8px}
+.vbar input[type=range]{width:130px;accent-color:var(--accent)}
+.vbar select{width:auto;padding:5px 8px;font-size:.92rem}
+.vhint{position:absolute;left:14px;top:12px;font-size:.85rem;color:var(--muted);pointer-events:none}
+.vinfo{position:absolute;right:14px;top:12px;font-size:.85rem;color:var(--muted);pointer-events:none;font-variant-numeric:tabular-nums;text-align:right}
+.slices{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:24px}
+@media (max-width:680px){.slices{grid-template-columns:repeat(2,1fr)}}
+.slices canvas{image-rendering:pixelated;background:#000 !important}
+h3{font-size:1.1rem;margin:32px 0 4px}
+.stale{color:var(--warn);font-size:.95rem;margin-top:10px}
+footer{padding:32px 0 56px;border-top:1px solid var(--line);color:var(--muted);font-size:.88rem}
+[hidden]{display:none !important}
+#s3 figure{max-width:680px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>PlantVG<small>Build a 3D voxel finite-element model of herbaceous stem cell walls from one transverse and one longitudinal microscope slide.</small></h1>
+  <p class="credit">Browser version of <strong>PlantVG</strong> by C.J. Stubbs and A. Benzecry, Fairleigh Dickinson University. Everything runs on your device; images are never uploaded. All units are pixels, and each input image has its own scale, so keep track of your own pixel-to-micron conversion.</p>
+</header>
+
+<main>
+<section class="step" id="s1" aria-labelledby="h1t">
+  <div class="num" aria-hidden="true">1</div>
+  <div class="body">
+    <h2 id="h1t">Load the two slides</h2>
+    <p class="lede">Drop an image on each box, or click a box to choose a file. You can also drop both files at once anywhere on the page; a file with "trans" in its name goes to transverse. Only the first (red) channel is used, as in the original.</p>
+    <div class="drops">
+      <button class="drop" id="dropT" type="button" aria-describedby="h1t"><span class="t">Transverse slice</span><span class="s">Drop JPG, PNG or TIFF</span></button>
+      <button class="drop" id="dropL" type="button" aria-describedby="h1t"><span class="t">Longitudinal slice</span><span class="s">Drop JPG, PNG or TIFF</span></button>
+    </div>
+    <input type="file" id="fileT" accept="image/*,.tif,.tiff" hidden>
+    <input type="file" id="fileL" accept="image/*,.tif,.tiff" hidden>
+    <div class="row">
+      <button type="button" id="swap" disabled>Swap transverse and longitudinal</button>
+      <button type="button" class="link" id="example">Try it with the example slides</button>
+    </div>
+    <p class="msg err" id="loadErr" hidden></p>
+  </div>
+</section>
+
+<section class="step" id="s2" aria-labelledby="h2t">
+  <div class="num" aria-hidden="true">2</div>
+  <div class="body">
+    <h2 id="h2t">Model parameters</h2>
+    <p class="lede">A buffer of 2 × radius + wall thickness slices is added internally and cropped off at export, since the end-cap random walk hasn't settled there yet.</p>
+    <div class="params" id="params"></div>
+    <ul class="errors" id="paramErr" hidden></ul>
+    <dl class="readout" id="readout" hidden></dl>
+  </div>
+</section>
+
+<section class="step" id="s3" aria-labelledby="h3t" aria-disabled="true">
+  <div class="num" aria-hidden="true">3</div>
+  <div class="body">
+    <h2 id="h3t">Check the transverse traces</h2>
+    <p class="lede">Each cell lumen should get exactly one colored outline. If the outlines sit on the wall material instead of the lumens, invert the transverse image.</p>
+    <figure><canvas id="traceT" class="trace-c" role="img" aria-label="Transverse image with traced cell outlines"></canvas><figcaption id="traceTcap"></figcaption></figure>
+    <div class="row"><label class="check"><input type="checkbox" id="invT"> Invert transverse image</label></div>
+  </div>
+</section>
+
+<section class="step" id="s4" aria-labelledby="h4t" aria-disabled="true">
+  <div class="num" aria-hidden="true">4</div>
+  <div class="body">
+    <h2 id="h4t">Cell lengths</h2>
+    <p class="lede">Cells clipped by the top or bottom edge of the longitudinal image are dropped automatically, since their true length is unknown. Drag the handles to set the lower and upper cut on what remains.</p>
+    <div class="figs">
+      <figure><canvas id="traceL" class="trace-c" role="img" aria-label="Longitudinal image with counted cells outlined"></canvas><figcaption id="traceLcap"></figcaption></figure>
+      <figure><canvas id="histL" role="img" aria-label="Histogram of measured cell lengths with the kept range highlighted"></canvas><figcaption>Cell length distribution (pixels). The shaded band is the range you keep.</figcaption></figure>
+    </div>
+    <div class="row"><label class="check"><input type="checkbox" id="invL"> Invert longitudinal image</label></div>
+    <div class="range" id="range"><div class="track"></div><div class="fill" id="rfill"></div>
+      <input type="range" id="rLo" aria-label="Lower length cut" step="any"><input type="range" id="rHi" aria-label="Upper length cut" step="any"></div>
+    <div class="range-nums">
+      <label>Keep lengths above <input type="number" id="nLo" step="0.1"></label>
+      <label>and below <input type="number" id="nHi" step="0.1"></label>
+      <span id="keptTxt" aria-live="polite"></span>
+    </div>
+    <div class="lengths" id="lengthsTxt"></div>
+  </div>
+</section>
+
+<section class="step" id="s5" aria-labelledby="h5t" aria-disabled="true">
+  <div class="num" aria-hidden="true">5</div>
+  <div class="body">
+    <h2 id="h5t">Fit the length distribution</h2>
+    <p class="lede">The distribution is chosen in step 2. With only a few surviving cells, several distributions fit about equally well; the choice is prior knowledge, not evidence from this one slide.</p>
+    <div class="figs">
+      <div><p class="stats" id="fitStats"></p><p class="msg err" id="fitErr" hidden></p></div>
+      <figure><canvas id="histFit" role="img" aria-label="Measured cell lengths with the fitted distribution overlaid"></canvas><figcaption>Measured lengths (bars) and the fitted distribution (line).</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section class="step" id="s6" aria-labelledby="h6t" aria-disabled="true">
+  <div class="num" aria-hidden="true">6</div>
+  <div class="body">
+    <h2 id="h6t">Generate the voxel models</h2>
+    <p class="lede">Builds the end-cap array, then the voxel matrix cell by cell, then crops and downsamples. Each model is a multi-page TIFF that ImageJ and FIJI open directly.</p>
+    <div class="row"><button class="primary" id="gen" type="button">Generate model</button><span id="genTxt" aria-live="polite"></span></div>
+    <div class="progress" id="prog" hidden><div></div></div>
+    <p class="stale" id="stale" hidden>Settings have changed since these models were generated. Generate again to update them.</p>
+    <div id="results" hidden>
+      <div class="viewer-wrap">
+        <canvas id="viewer" aria-label="3D rendering of the voxel model. Drag to rotate, scroll or pinch to zoom, right-drag to pan."></canvas>
+        <div class="vhint">Drag to spin. Scroll to zoom. Right-drag to pan.</div>
+        <div class="vinfo" id="vinfo"></div>
+      </div>
+      <div class="vbar">
+        <label id="modelPickL" hidden>Model <select id="modelPick"></select></label>
+        <label>Detail <select id="detail"><option value="0">Auto</option><option value="1">Full</option><option value="2">1/2</option><option value="3">1/3</option><option value="4">1/4</option></select></label>
+        <label>Height cut <input type="range" id="cutH" min="0" max="100" value="100"></label>
+        <label>Side cut <input type="range" id="cutX" min="0" max="100" value="100"></label>
+        <label class="check"><input type="checkbox" id="spin"> Auto-rotate</label>
+        <button type="button" id="resetView">Reset view</button>
+      </div>
+      <h3>Slice preview</h3>
+      <p class="lede" id="sliceCap"></p>
+      <div class="slices" id="slices"></div>
+      <h3>Save the models</h3>
+      <p class="lede">Each model saves as a multi-page TIFF stack that ImageJ and FIJI open directly.</p>
+      <div class="row"><button class="primary" id="dl" type="button">Download TIFF</button><span id="dlTxt" aria-live="polite"></span></div>
+    </div>
+  </div>
+</section>
+</main>
+<footer>PlantVG core algorithm: Stubbs, C.J. &amp; Benzecry, A., Fairleigh Dickinson University (github.com/cstubbsFDU/PlantVG). This page reproduces the Python port step for step. Random draws use this page's own generator, so a given seed is reproducible here but won't give byte-identical models to the Colab notebook with the same seed.</footer>
+</div>
+
+<script>/* PlantVG core, JavaScript port of plantvg_core.py
+   (Stubbs, C.J. & Benzecry, A., Fairleigh Dickinson University). Units: pixels. */
+const PVG = (() => {
+  "use strict";
+
+  // ---------- MATLAB-compatible helpers ----------
+  const mround = (x) => Math.trunc(x + (x < 0 ? -0.5 : 0.5)); // half away from zero
+
+  // ---------- Section 1: binarization ----------
+  function graythresh(u8) {
+    const n = 256, counts = new Float64Array(n);
+    for (let i = 0; i < u8.length; i++) counts[u8[i]]++;
+    let total = 0; for (let i = 0; i < n; i++) total += counts[i];
+    if (total === 0) return 0;
+    const omega = new Float64Array(n), mu = new Float64Array(n);
+    let o = 0, m = 0;
+    for (let i = 0; i < n; i++) {
+      const p = counts[i] / total;
+      o += p; m += p * (i + 1);
+      omega[i] = o; mu[i] = m;
+    }
+    const muT = mu[n - 1], sig = new Float64Array(n);
+    let maxv = -Infinity, any = false;
+    for (let i = 0; i < n; i++) {
+      const v = (muT * omega[i] - mu[i]) ** 2 / (omega[i] * (1 - omega[i]));
+      sig[i] = v;
+      if (!Number.isNaN(v)) { any = true; if (v > maxv) maxv = v; }
+    }
+    if (!any) return 0;
+    let s = 0, c = 0;
+    for (let i = 0; i < n; i++) if (sig[i] === maxv) { s += i; c++; }
+    const idx = s / c + 1;
+    return (idx - 1) / (n - 1);
+  }
+
+  function imbinarize(u8) {
+    const level = graythresh(u8), out = new Uint8Array(u8.length);
+    for (let i = 0; i < u8.length; i++) out[i] = (u8[i] / 255) > level ? 1 : 0;
+    return { bw: out, level };
+  }
+
+  // ---------- Section 2: fill holes, label, trace ----------
+  function fillHoles(bw, H, W) {
+    // background flood from the border, 4-connected (scipy binary_fill_holes default)
+    const reached = new Uint8Array(H * W), stack = [];
+    const push = (r, c) => { const i = r * W + c; if (!bw[i] && !reached[i]) { reached[i] = 1; stack.push(i); } };
+    for (let c = 0; c < W; c++) { push(0, c); push(H - 1, c); }
+    for (let r = 0; r < H; r++) { push(r, 0); push(r, W - 1); }
+    while (stack.length) {
+      const i = stack.pop(), r = (i / W) | 0, c = i - r * W;
+      if (r > 0) push(r - 1, c); if (r < H - 1) push(r + 1, c);
+      if (c > 0) push(r, c - 1); if (c < W - 1) push(r, c + 1);
+    }
+    const out = new Uint8Array(H * W);
+    for (let i = 0; i < out.length; i++) out[i] = bw[i] || !reached[i] ? 1 : 0;
+    return out;
+  }
+
+  // 8-connected labels numbered in column-major first-pixel order (MATLAB bwlabel)
+  function labelColMajor(bw, H, W) {
+    const lab = new Int32Array(H * W), starts = [];
+    let n = 0; const stack = [];
+    for (let c = 0; c < W; c++) for (let r = 0; r < H; r++) {
+      const i0 = r * W + c;
+      if (!bw[i0] || lab[i0]) continue;
+      n++; starts.push([r, c]); lab[i0] = n; stack.push(i0);
+      while (stack.length) {
+        const i = stack.pop(), rr = (i / W) | 0, cc = i - rr * W;
+        for (let dr = -1; dr <= 1; dr++) {
+          const r2 = rr + dr; if (r2 < 0 || r2 >= H) continue;
+          for (let dc = -1; dc <= 1; dc++) {
+            const c2 = cc + dc; if (c2 < 0 || c2 >= W) continue;
+            const j = r2 * W + c2;
+            if (bw[j] && !lab[j]) { lab[j] = n; stack.push(j); }
+          }
+        }
+      }
+    }
+    return { lab, n, starts };
+  }
+
+  const MOORE = [[-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1]];
+  function mooreIdx(dr, dc) {
+    for (let j = 0; j < 8; j++) if (MOORE[j][0] === dr && MOORE[j][1] === dc) return j;
+    throw new Error("boundary trace lost its backtrack pixel");
+  }
+
+  function traceOne(lab, id, H, W, sr, sc) {
+    const solid = (r, c) => r >= 0 && r < H && c >= 0 && c < W && lab[r * W + c] === id;
+    let br = sr, bc = sc - 1, cr = sr, cc = sc;
+    const pts = [[sr, sc]];
+    let first = null;
+    const maxSteps = 4 * H * W;
+    for (let step = 0; step < maxSteps; step++) {
+      const idx = mooreIdx(br - cr, bc - cc);
+      let found = null;
+      for (let k = 1; k <= 8; k++) {
+        const j = (idx + k) % 8, r = cr + MOORE[j][0], c = cc + MOORE[j][1];
+        if (solid(r, c)) {
+          found = [r, c];
+          const p = (idx + k - 1) % 8;
+          br = cr + MOORE[p][0]; bc = cc + MOORE[p][1];
+          break;
+        }
+      }
+      if (!found) break;
+      if (first === null) first = found;
+      else if (cr === sr && cc === sc && found[0] === first[0] && found[1] === first[1]) break;
+      cr = found[0]; cc = found[1];
+      pts.push([cr, cc]);
+      if (pts.length > 2 && cr === sr && cc === sc) {
+        const ni = mooreIdx(br - cr, bc - cc);
+        for (let k = 1; k <= 8; k++) {
+          const j = (ni + k) % 8, r = cr + MOORE[j][0], c = cc + MOORE[j][1];
+          if (solid(r, c)) {
+            if (r === first[0] && c === first[1]) { pts.pop(); pts.push([sr, sc]); return pts; }
+            break;
+          }
+        }
+      }
+    }
+    const a = pts[0], b = pts[pts.length - 1];
+    if (a[0] !== b[0] || a[1] !== b[1]) pts.push([a[0], a[1]]);
+    return pts;
+  }
+
+  function bwboundaries(bw, H, W) {
+    const { lab, n, starts } = labelColMajor(bw, H, W), out = [];
+    for (let id = 1; id <= n; id++) out.push(traceOne(lab, id, H, W, starts[id - 1][0], starts[id - 1][1]));
+    return out;
+  }
+
+  // ---------- geometry ----------
+  // MATLAB-compatible poly2mask (x_rule "left"), restricted to a row/col window for speed.
+  // Returns {r0, c0, h, w, m} where m is a Uint8Array window of the full-image mask.
+  function poly2maskWindow(pts, H, W) {
+    let r = pts.map((p) => p[0]), c = pts.map((p) => p[1]);
+    if (r[0] !== r[r.length - 1] || c[0] !== c[c.length - 1]) { r.push(r[0]); c.push(c[0]); }
+    const E = [];
+    for (let i = 0; i < r.length - 1; i++) {
+      if (r[i] === r[i + 1]) continue;
+      E.push([r[i], r[i + 1], c[i], c[i + 1], Math.min(r[i], r[i + 1]), Math.max(r[i], r[i + 1])]);
+    }
+    let minR = Infinity, maxR = -Infinity;
+    for (const v of r) { if (v < minR) minR = v; if (v > maxR) maxR = v; }
+    const y0 = Math.max(0, Math.floor(minR)), y1 = Math.min(H - 1, Math.ceil(maxR));
+    let minC = Infinity, maxC = -Infinity;
+    for (const v of c) { if (v < minC) minC = v; if (v > maxC) maxC = v; }
+    const x0 = Math.max(0, Math.floor(minC)), x1 = Math.min(W - 1, Math.ceil(maxC));
+    const h = Math.max(0, y1 - y0 + 1), w = Math.max(0, x1 - x0 + 1);
+    const m = new Uint8Array(h * w);
+    if (!E.length) return { r0: y0, c0: x0, h, w, m };
+    const xs = [];
+    for (let y = y0; y <= y1; y++) {
+      xs.length = 0;
+      for (const e of E) {
+        if (e[4] < y && y <= e[5]) xs.push(e[2] + (y - e[0]) * ((e[3] - e[2]) / (e[1] - e[0])));
+      }
+      xs.sort((a, b) => a - b);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const a = xs[k], b = xs[k + 1];
+        const s = Math.max(0, Math.ceil(a)), t = Math.min(W - 1, Math.ceil(b) - 1);
+        for (let px = s; px <= t; px++) if (px >= x0 && px <= x1) m[(y - y0) * w + (px - x0)] = 1;
+      }
+    }
+    return { r0: y0, c0: x0, h, w, m };
+  }
+
+  // Section 3: cell lengths
+  function cellHeights(bounds, imageH) {
+    const heights = [], counted = new Array(bounds.length).fill(false);
+    bounds.forEach((b, i) => {
+      let mn = Infinity, mx = -Infinity;
+      for (const p of b) { if (p[0] < mn) mn = p[0]; if (p[0] > mx) mx = p[0]; }
+      if (mx < imageH - 1 && mn > 0) { heights.push(mx - mn); counted[i] = true; }
+    });
+    return { heights, counted };
+  }
+
+  const mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+  const std1 = (a) => { if (a.length < 2) return 0; const m = mean(a); return Math.sqrt(a.reduce((s, v) => s + (v - m) ** 2, 0) / (a.length - 1)); };
+
+  function filterHeights(heights, lower, upper, lengthFactor) {
+    const scaled = heights.map((h) => lengthFactor * h);
+    const kept = scaled.filter((v) => (lower == null || v > lower) && (upper == null || v < upper));
+    if (!kept.length) {
+      const lo = lower == null ? "-inf" : lower.toFixed(1), hi = upper == null ? "+inf" : upper.toFixed(1);
+      throw new Error(`The cell length range you chose (${lo} to ${hi} pixels) excludes every cell. ` +
+        `The measured lengths run from ${Math.min(...scaled).toFixed(1)} to ${Math.max(...scaled).toFixed(1)} pixels. Widen the range to cover some of that.`);
+    }
+    return { height: kept, avg: mean(kept), std: std1(kept) };
+  }
+
+  // ---------- random numbers (seedable) ----------
+  function makeRng(seed) {
+    // splitmix32 -> xoshiro128**
+    let s = seed >>> 0;
+    const sm = () => { s = (s + 0x9e3779b9) >>> 0; let z = s; z = Math.imul(z ^ (z >>> 16), 0x85ebca6b); z = Math.imul(z ^ (z >>> 13), 0xc2b2ae35); return (z ^ (z >>> 16)) >>> 0; };
+    let a = sm(), b = sm(), c = sm(), d = sm();
+    const u32 = () => {
+      const r = Math.imul(((Math.imul(b, 5) << 7) | (Math.imul(b, 5) >>> 25)), 9) >>> 0;
+      const t = b << 9;
+      c ^= a; d ^= b; b ^= c; a ^= d; c ^= t; d = (d << 11) | (d >>> 21);
+      return r;
+    };
+    const random = () => ((u32() >>> 5) * 67108864 + (u32() >>> 6)) / 9007199254740992;
+    let spare = null;
+    const normal01 = () => {
+      if (spare !== null) { const v = spare; spare = null; return v; }
+      let u, v, q;
+      do { u = 2 * random() - 1; v = 2 * random() - 1; q = u * u + v * v; } while (q >= 1 || q === 0);
+      const f = Math.sqrt(-2 * Math.log(q) / q); spare = v * f; return u * f;
+    };
+    const exp1 = () => -Math.log(1 - random());
+    const stdGamma = (k) => {
+      if (k <= 0) return 0;
+      if (k < 1) return stdGamma(1 + k) * Math.pow(random(), 1 / k);
+      const dd = k - 1 / 3, cc = 1 / Math.sqrt(9 * dd);
+      for (;;) {
+        let x, v; do { x = normal01(); v = 1 + cc * x; } while (v <= 0);
+        v = v * v * v; const u = random();
+        if (u < 1 - 0.0331 * x ** 4 || Math.log(u) < 0.5 * x * x + dd * (1 - v + Math.log(v))) return dd * v;
+      }
+    };
+    const logFact = (k) => { let s = 0; for (let i = 2; i <= k; i++) s += Math.log(i); return s; };
+    const poisson = (lam) => {
+      if (lam <= 0) return 0;
+      if (lam < 30) { const L = Math.exp(-lam); let k = 0, p = 1; do { k++; p *= random(); } while (p > L); return k - 1; }
+      // PTRS (Hormann 1993)
+      const slam = Math.sqrt(lam), loglam = Math.log(lam), b = 0.931 + 2.53 * slam, a = -0.059 + 0.02483 * b;
+      const invalpha = 1.1239 + 1.1328 / (b - 3.4), vr = 0.9277 - 3.6224 / (b - 2);
+      for (;;) {
+        const U = random() - 0.5, V = random(), us = 0.5 - Math.abs(U);
+        const k = Math.floor((2 * a / us + b) * U + lam + 0.43);
+        if (us >= 0.07 && V <= vr) return k;
+        if (k < 0 || (us < 0.013 && V > us)) continue;
+        if (Math.log(V) + Math.log(invalpha) - Math.log(a / (us * us) + b) <= -lam + k * loglam - lgamma(k + 1)) return k;
+      }
+    };
+    return { random, normal: (m, s) => m + s * normal01(), exponential: (mu) => mu * exp1(), gamma: (a, b) => b * stdGamma(a), poisson, weibull: (a, b) => a * Math.pow(exp1(), 1 / b) };
+  }
+
+  function lgamma(x) {
+    const g = 7, C = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+    if (x < 0.5) return Math.log(Math.PI / Math.abs(Math.sin(Math.PI * x))) - lgamma(1 - x);
+    x -= 1; let a = C[0]; const t = x + g + 0.5;
+    for (let i = 1; i < g + 2; i++) a += C[i] / (x + i);
+    return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+  }
+  function digamma(x) { let r = 0; while (x < 6) { r -= 1 / x; x += 1; } const f = 1 / (x * x); return r + Math.log(x) - 0.5 / x - f * (1 / 12 - f * (1 / 120 - f * (1 / 252 - f * (1 / 240 - f / 132)))); }
+  function trigamma(x) { let r = 0; while (x < 6) { r += 1 / (x * x); x += 1; } const f = 1 / (x * x); return r + 1 / x + f / 2 + f / x * (1 / 6 - f * (1 / 30 - f * (1 / 42 - f / 30))); }
+
+  const DISTRIBUTIONS = ["Normal", "Exponential", "Gamma", "Poisson", "Weibull"];
+
+  // Port of fitdist; params in MATLAB's order.
+  function fitDistribution(x, name) {
+    if (!x.length) throw new Error("cannot fit a distribution to an empty height vector");
+    const key = name.trim().toLowerCase();
+    if (key === "normal") { const mu = mean(x), s = std1(x); return { name: "Normal", params: [mu, s], sample: (g) => g.normal(mu, s) }; }
+    if (key === "exponential") { const mu = mean(x); return { name: "Exponential", params: [mu], sample: (g) => g.exponential(mu) }; }
+    if (key === "gamma") {
+      if (x.some((v) => v <= 0)) throw new Error("The Gamma distribution needs every cell length to be above zero. Raise the lower end of the length range to drop the zero-length cells, or choose Normal.");
+      const m = mean(x), sl = Math.log(m) - mean(x.map(Math.log));
+      let a = sl > 0 ? (3 - sl + Math.sqrt((sl - 3) ** 2 + 24 * sl)) / (12 * sl) : 1e6;
+      for (let i = 0; i < 100 && Number.isFinite(a) && sl > 0; i++) {
+        const f = Math.log(a) - digamma(a) - sl, d = 1 / a - trigamma(a), na = a - f / d;
+        a = na > 0 ? na : a / 2; if (Math.abs(f) < 1e-14) break;
+      }
+      const b = m / a; return { name: "Gamma", params: [a, b], sample: (g) => g.gamma(a, b) };
+    }
+    if (key === "poisson") {
+      if (x.some((v) => v < 0 || v !== Math.floor(v))) throw new Error("The Poisson distribution only works with whole-number cell lengths, but the cell length factor has made them fractional. Set the cell length factor to a whole number (1, 2, 3...), or choose a different distribution. Normal and Gamma both handle fractional lengths.");
+      const lam = mean(x); return { name: "Poisson", params: [lam], sample: (g) => g.poisson(lam) };
+    }
+    if (key === "weibull") {
+      if (x.some((v) => v <= 0)) throw new Error("The Weibull distribution needs every cell length to be above zero. Raise the lower end of the length range to drop the zero-length cells, or choose Normal.");
+      const lx = x.map(Math.log), mlx = mean(lx);
+      const f = (k) => { let s0 = 0, s1 = 0; const mx = Math.max(...lx); for (let i = 0; i < x.length; i++) { const w = Math.exp(k * (lx[i] - mx)); s0 += w; s1 += w * lx[i]; } return s1 / s0 - 1 / k - mlx; };
+      let lo = 1e-3, hi = 1; while (f(hi) < 0 && hi < 1e4) hi *= 2;
+      for (let i = 0; i < 200; i++) { const md = (lo + hi) / 2; if (f(md) < 0) lo = md; else hi = md; }
+      const k = (lo + hi) / 2, mx = Math.max(...lx);
+      const scale = Math.exp(mx) * Math.pow(mean(lx.map((v) => Math.exp(k * (v - mx)))), 1 / k);
+      return { name: "Weibull", params: [scale, k], sample: (g) => g.weibull(scale, k) };
+    }
+    throw new Error(`unknown distribution ${name}`);
+  }
+  const stepSize = (fitted, g) => Math.max(1, mround(fitted.sample(g)));
+
+  // ---------- Section 5: end caps ----------
+  function generateEndCaps(nCells, depth, fitted, avg, g) {
+    const caps = [];
+    for (let i = 0; i < nCells; i++) {
+      const v = new Uint8Array(depth);
+      let pos = mround(g.random() * avg);
+      while (pos <= depth) { if (pos >= 1) v[pos - 1] = 1; pos += stepSize(fitted, g); }
+      caps.push(v);
+    }
+    return caps;
+  }
+
+  // ---------- Section 6: fillet profiles ----------
+  function filletArrays(cap, radius, wt) {
+    const depth = cap.length, subI = new Float64Array(depth), subO = new Float64Array(depth), fill = new Uint8Array(depth);
+    const thk = mround(wt / 2), ri = radius | 0, ro = ri + thk;
+    for (let k = 1; k <= depth; k++) {
+      if (!cap[k - 1]) continue;
+      for (let j = 1; j <= ri; j++) {
+        if (k - thk - ri + j > 0 && k + thk + ri - j < depth + 1) {
+          const v = Math.sin(j * Math.PI / 2 / ri) * ri;
+          subI[k - thk - ri + j - 1] = v; subI[k + thk + ri - j - 1] = v;
+        }
+      }
+      if (k - thk > 0 && k + thk < depth + 1) for (let q = k - thk - 1; q < k + thk; q++) subI[q] = ri;
+      for (let j = 1; j <= ri + thk; j++) {
+        if (k - thk - ri + j > 0 && k + thk + ri - j < depth + 1) {
+          const v = Math.sin(j * Math.PI / 2 / (ri + wt)) * (ri + thk);
+          subO[k - ro + j - 1] = v; subO[k + ro - j - 1] = v;
+        }
+      }
+      if (k - thk > 0 && k + thk < depth + 1) for (let q = k - thk - 1; q < k + thk; q++) fill[q] = 1;
+    }
+    return { subI, subO, fill };
+  }
+
+  // city-block distance transform (scipy distance_transform_cdt, taxicab); -1 everywhere if no background
+  function cdtTaxicab(mask, h, w) {
+    const BIG = 1 << 29, d = new Int32Array(h * w);
+    let anyBg = false;
+    for (let i = 0; i < d.length; i++) { if (mask[i]) d[i] = BIG; else { d[i] = 0; anyBg = true; } }
+    if (!anyBg) { d.fill(-1); return d; }
+    for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
+      const i = r * w + c; let v = d[i]; if (!v) continue;
+      if (r > 0 && d[i - w] + 1 < v) v = d[i - w] + 1;
+      if (c > 0 && d[i - 1] + 1 < v) v = d[i - 1] + 1;
+      d[i] = v;
+    }
+    for (let r = h - 1; r >= 0; r--) for (let c = w - 1; c >= 0; c--) {
+      const i = r * w + c; let v = d[i]; if (!v) continue;
+      if (r < h - 1 && d[i + w] + 1 < v) v = d[i + w] + 1;
+      if (c < w - 1 && d[i + 1] + 1 < v) v = d[i + 1] + 1;
+      d[i] = v;
+    }
+    return d;
+  }
+
+  // ---------- Parameters ----------
+  function derive(p, H, W) {
+    const buffer = Math.ceil(2 * p.radius + p.wall_thickness);
+    const working = Math.ceil(p.voxel_depth) + buffer;
+    const sb = Math.ceil(p.radius + p.wall_thickness);
+    const n = (a, b) => Math.max(0, Math.ceil((b - (a - 1)) / p.dsf));
+    return { buffer, working, sb, shape: [n(buffer, working), n(sb, H - sb), n(sb, W - sb)] };
+  }
+  function validate(p) {
+    const e = [];
+    if (!(p.voxel_depth >= 1)) e.push("Voxel depth must be at least 1 slice.");
+    if (!(p.wall_thickness >= 1)) e.push("Wall thickness must be at least 1 pixel.");
+    if (!(p.radius >= 1)) e.push("End cap radius must be at least 1 pixel.");
+    if (!(p.dsf >= 1)) e.push("Downsample factor must be at least 1.");
+    if (!(p.n_models >= 1)) e.push("Number of models must be at least 1.");
+    if (!(p.wall_variation >= 0)) e.push("Wall variation can't be negative.");
+    if (!(p.length_factor > 0)) e.push("Length factor must be above zero.");
+    if (!DISTRIBUTIONS.includes(p.distribution)) e.push("Pick a distribution.");
+    return e;
+  }
+
+  // ---------- Section 6+7: voxel matrix, computed straight into the cropped, downsampled output ----------
+  // Identical to build_voxel_matrix followed by crop_and_downsample, but only evaluates the
+  // voxels that survive the crop, so large images don't need the full working volume in memory.
+  async function buildModel(bounds, caps, H, W, p, g, onCell) {
+    const D = derive(p, H, W), [oD, oH, oW] = D.shape, dsf = p.dsf;
+    const vol = new Uint8Array(oD * oH * oW);
+    const ks = []; for (let k = D.buffer - 1; k < D.working; k += dsf) ks.push(k);
+    const rowStart = D.sb - 1, colStart = D.sb - 1;
+    const diskCache = {};
+    const disk = (rad) => {
+      if (diskCache[rad]) return diskCache[rad];
+      const o = []; for (let dr = -rad; dr <= rad; dr++) for (let dc = -rad; dc <= rad; dc++) if (dr * dr + dc * dc <= rad * rad) o.push(dr, dc);
+      return (diskCache[rad] = o);
+    };
+    for (let i = 0; i < bounds.length; i++) {
+      const b = bounds[i];
+      if (b.length <= 4) { if (onCell) await onCell(i, bounds.length); continue; }
+      const variation = mround(g.random() * 2 * p.wall_variation - p.wall_variation);
+      const cwt = Math.max(1, p.wall_thickness + variation);
+      // outer = disk dilation of boundary pixels | inner, evaluated in a padded window
+      let mnr = Infinity, mxr = -Infinity, mnc = Infinity, mxc = -Infinity;
+      for (const q of b) { if (q[0] < mnr) mnr = q[0]; if (q[0] > mxr) mxr = q[0]; if (q[1] < mnc) mnc = q[1]; if (q[1] > mxc) mxc = q[1]; }
+      const R0 = Math.max(0, mnr - cwt - 2), R1 = Math.min(H - 1, mxr + cwt + 2), C0 = Math.max(0, mnc - cwt - 2), C1 = Math.min(W - 1, mxc + cwt + 2);
+      const wh = R1 - R0 + 1, ww = C1 - C0 + 1;
+      const inner = new Uint8Array(wh * ww), outer = new Uint8Array(wh * ww);
+      const pm = poly2maskWindow(b, H, W);
+      for (let r = 0; r < pm.h; r++) for (let c = 0; c < pm.w; c++) if (pm.m[r * pm.w + c]) {
+        const rr = pm.r0 + r - R0, cc = pm.c0 + c - C0;
+        if (rr >= 0 && rr < wh && cc >= 0 && cc < ww) { inner[rr * ww + cc] = 1; outer[rr * ww + cc] = 1; }
+      }
+      const dk = disk(cwt);
+      for (const q of b) {
+        for (let t = 0; t < dk.length; t += 2) {
+          const rr = q[0] + dk[t], cc = q[1] + dk[t + 1];
+          if (rr < 0 || rr >= H || cc < 0 || cc >= W) continue;
+          outer[(rr - R0) * ww + (cc - C0)] = 1;
+        }
+      }
+      // bbox of outer, padded by one, clipped to the image
+      let br0 = Infinity, br1 = -1, bc0 = Infinity, bc1 = -1;
+      for (let r = 0; r < wh; r++) for (let c = 0; c < ww; c++) if (outer[r * ww + c]) {
+        if (r < br0) br0 = r; if (r > br1) br1 = r; if (c < bc0) bc0 = c; if (c > bc1) bc1 = c;
+      }
+      if (br1 < 0) { if (onCell) await onCell(i, bounds.length); continue; }
+      const r0 = Math.max(0, br0 + R0 - 1), r1 = Math.min(H, br1 + R0 + 2), c0 = Math.max(0, bc0 + C0 - 1), c1 = Math.min(W, bc1 + C0 + 2);
+      const ch = r1 - r0, cw = c1 - c0;
+      const oc = new Uint8Array(ch * cw), ic = new Uint8Array(ch * cw);
+      for (let r = 0; r < ch; r++) for (let c = 0; c < cw; c++) {
+        const wr = r + r0 - R0, wc = c + c0 - C0;
+        if (wr >= 0 && wr < wh && wc >= 0 && wc < ww) { oc[r * cw + c] = outer[wr * ww + wc]; ic[r * cw + c] = inner[wr * ww + wc]; }
+      }
+      const dOut = cdtTaxicab(oc, ch, cw), dIn = cdtTaxicab(ic, ch, cw);
+      const { subI, subO, fill } = filletArrays(caps[i], p.radius, cwt);
+      // output-grid rows/cols that fall inside this crop
+      const gr = [], gc = [];
+      for (let r = rowStart; r < H - D.sb; r += dsf) if (r >= r0 && r < r1) gr.push(r);
+      for (let c = colStart; c < W - D.sb; c += dsf) if (c >= c0 && c < c1) gc.push(c);
+      if (gr.length && gc.length) {
+        const cache = new Map();
+        for (let oz = 0; oz < ks.length; oz++) {
+          const k = ks[oz], nO = Math.floor(subO[k]), nI = Math.floor(subI[k]), f = fill[k];
+          const key = nO * 1e6 + nI * 2 + f;
+          let layer = cache.get(key);
+          if (!layer) {
+            layer = [];
+            for (const r of gr) for (const c of gc) {
+              const li = (r - r0) * cw + (c - c0);
+              let v = dOut[li] > nO; if (v && !f) v = !(dIn[li] > nI);
+              if (v) layer.push(((r - rowStart) / dsf) * oW + (c - colStart) / dsf);
+            }
+            cache.set(key, layer);
+          }
+          const base = oz * oH * oW;
+          for (let t = 0; t < layer.length; t++) vol[base + layer[t]] = 255;
+        }
+      }
+      if (onCell) await onCell(i, bounds.length);
+    }
+    return { vol, shape: D.shape };
+  }
+
+  // ---------- TIFF writer (multi-page, uint8, minisblack, uncompressed) ----------
+  function writeTiff(vol, shape) {
+    const [d, h, w] = shape, page = h * w, nTags = 10, ifdSize = 2 + nTags * 12 + 4;
+    const desc = new TextEncoder().encode(`ImageJ=1.11a\nimages=${d}\nslices=${d}\nloop=false\n\0`);
+    const descOff = 8, dataOff = descOff + desc.length + (desc.length & 1);
+    const ifdBase = dataOff + d * page;
+    const buf = new ArrayBuffer(ifdBase + d * ifdSize + 1), dv = new DataView(buf), u8 = new Uint8Array(buf);
+    u8[0] = 0x49; u8[1] = 0x49; dv.setUint16(2, 42, true); dv.setUint32(4, ifdBase, true);
+    u8.set(desc, descOff); u8.set(vol, dataOff);
+    for (let z = 0; z < d; z++) {
+      let o = ifdBase + z * ifdSize; dv.setUint16(o, nTags, true); o += 2;
+      const tag = (t, type, cnt, val) => { dv.setUint16(o, t, true); dv.setUint16(o + 2, type, true); dv.setUint32(o + 4, cnt, true); if (type === 3 && cnt === 1) dv.setUint16(o + 8, val, true); else dv.setUint32(o + 8, val, true); o += 12; };
+      tag(254, 4, 1, 0); tag(256, 4, 1, w); tag(257, 4, 1, h); tag(258, 3, 1, 8); tag(259, 3, 1, 1); tag(262, 3, 1, 1);
+      if (z === 0) tag(270, 2, desc.length, descOff); else tag(284, 3, 1, 1);
+      tag(273, 4, 1, dataOff + z * page); tag(278, 4, 1, h); tag(279, 4, 1, page);
+      dv.setUint32(o, z < d - 1 ? ifdBase + (z + 1) * ifdSize : 0, true);
+    }
+    return new Uint8Array(buf, 0, ifdBase + d * ifdSize);
+  }
+
+  // ---------- ZIP writer (stored) ----------
+  const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  const crc32 = (u8) => { let c = 0xffffffff; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  function zip(files) {
+    const enc = new TextEncoder(), parts = [], central = []; let off = 0;
+    for (const f of files) {
+      const name = enc.encode(f.name), crc = crc32(f.data), sz = f.data.length;
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+      lh.setUint32(14, crc, true); lh.setUint32(18, sz, true); lh.setUint32(22, sz, true); lh.setUint16(26, name.length, true);
+      parts.push(new Uint8Array(lh.buffer), name, f.data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+      ch.setUint32(16, crc, true); ch.setUint32(20, sz, true); ch.setUint32(24, sz, true); ch.setUint16(28, name.length, true); ch.setUint32(42, off, true);
+      central.push(new Uint8Array(ch.buffer), name);
+      off += 30 + name.length + sz;
+    }
+    const cdSize = central.reduce((s, a) => s + a.length, 0), end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+    end.setUint32(12, cdSize, true); end.setUint32(16, off, true);
+    return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: "application/zip" });
+  }
+
+  return { graythresh, imbinarize, fillHoles, bwboundaries, poly2maskWindow, cellHeights, filterHeights, makeRng, fitDistribution, generateEndCaps, filletArrays, cdtTaxicab, derive, validate, buildModel, writeTiff, zip, crc32, DISTRIBUTIONS, mround };
+})();
+
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const S = { t: null, l: null, invT: false, invL: false, prepT: null, prepL: null, heights: null, filter: null, lengths: null, models: null, modelIdx: 0, genParams: null };
+
+/* ---------------- parameters ---------------- */
+const FIELDS = [
+  ["voxel_depth", "Voxel depth", "Height of the generated volume, in slices.", "int", 256],
+  ["wall_thickness", "Wall thickness", "Cell wall thickness in pixels.", "int", 9],
+  ["wall_variation", "Wall variation", "Per-cell random ± on the wall thickness. 0 gives uniform walls.", "int", 0],
+  ["radius", "End-cap radius", "Fillet radius: the curvature between side wall and end cap.", "int", 5],
+  ["length_factor", "Length factor", "Multiplier on every measured cell length.", "num", 1.0],
+  ["dsf", "Downsample factor", "1 is full resolution; 2 halves each dimension.", "int", 2],
+  ["n_models", "Number of models", "Independent models from the same pair of slides.", "int", 1],
+  ["distribution", "Length distribution", "Fitted to the measured cell lengths.", "sel", "Normal"],
+  ["seed", "Random seed", "−1 gives a different model every run. Enter a seed shown after a run to recreate that exact model.", "int", -1],
+  ["output_name", "Output name", "File name for the TIFF stacks.", "text", "Output Voxel Mesh"],
+];
+function buildParams() {
+  const box = $("params");
+  for (const [k, label, hint, type, def] of FIELDS) {
+    const d = document.createElement("div"); d.className = "field";
+    const id = "p_" + k;
+    let input;
+    if (type === "sel") { input = `<select id="${id}">${PVG.DISTRIBUTIONS.map((x) => `<option${x === def ? " selected" : ""}>${x}</option>`).join("")}</select>`; }
+    else if (type === "text") input = `<input type="text" id="${id}" value="${def}">`;
+    else input = `<input type="number" id="${id}" value="${def}" step="${type === "int" ? 1 : 0.1}" inputmode="${type === "int" ? "numeric" : "decimal"}">`;
+    d.innerHTML = `<label for="${id}">${label}</label><span class="hint" id="${id}_h">${hint}</span>${input}`;
+    d.querySelector("input,select").setAttribute("aria-describedby", id + "_h");
+    box.appendChild(d);
+  }
+  box.addEventListener("input", (e) => {
+    const id = e.target.id;
+    if (id === "p_length_factor") S.filter = null;
+    if (id === "p_output_name") { updateReadout(); markStale(); return; }
+    recompute("params");
+  });
+}
+function getParams() {
+  const p = {};
+  for (const [k, , , type] of FIELDS) {
+    const v = $("p_" + k).value;
+    p[k] = type === "int" ? (v.trim() === "" ? NaN : Number(v)) : type === "num" ? (v.trim() === "" ? NaN : Number(v)) : v;
+  }
+  for (const [k, , , type] of FIELDS) if (type === "int" && Number.isFinite(p[k]) && !Number.isInteger(p[k])) p[k] = NaN;
+  return p;
+}
+function paramProblems(p) {
+  const e = PVG.validate(p);
+  if (!Number.isInteger(p.seed)) e.push("Random seed must be a whole number.");
+  if (!p.output_name.trim()) e.push("Give the output a name.");
+  return e;
+}
+function updateReadout() {
+  const p = getParams(), errs = paramProblems(p), ul = $("paramErr");
+  ul.hidden = !errs.length; ul.innerHTML = errs.map((x) => `<li>${x}</li>`).join("");
+  const r = $("readout");
+  if (errs.length || !S.t) { r.hidden = true; return; }
+  const D = PVG.derive(p, S.t.H, S.t.W), [a, b, c] = D.shape, mb = (a * b * c) / 1e6;
+  r.hidden = false;
+  r.innerHTML = `<dt>Working depth</dt><dd>${D.working} slices (${D.buffer} buffer slices cropped at export)</dd>
+    <dt>Edge crop</dt><dd>${D.sb} px on each side</dd>
+    <dt>Output volume</dt><dd>${a} × ${b} × ${c} voxels (slices × rows × columns)</dd>
+    <dt>Uncompressed TIFF</dt><dd>~${mb.toFixed(1)} MB per model, ${p.n_models} model${p.n_models === 1 ? "" : "s"}</dd>`;
+  if (a < 1 || b < 1 || c < 1) r.innerHTML += `<dt></dt><dd style="color:var(--err)">The edge crop removes the whole image. Lower the wall thickness or radius.</dd>`;
+}
+
+/* ---------------- image loading ---------------- */
+let utifReady = null;
+function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("couldn't load " + src)); document.head.appendChild(s); }); }
+async function decodeTiff(buf) {
+  if (!utifReady) utifReady = loadScript("https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js").then(() => loadScript("https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.js"));
+  await utifReady;
+  const ifds = UTIF.decode(buf), ifd = ifds[0];
+  const bps = ifd.t258 ? ifd.t258[0] : 8;
+  if (bps !== 8) throw new Error(`This TIFF uses ${bps}-bit samples. PlantVG expects 8-bit image data; convert it to 8-bit (in FIJI: Image > Type > 8-bit) and drop it again.`);
+  UTIF.decodeImage(buf, ifd);
+  const rgba = UTIF.toRGBA8(ifd), W = ifd.width, H = ifd.height, red = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) red[i] = rgba[i * 4];
+  return { red, W, H };
+}
+async function loadImage(file) {
+  const name = file.name || "image";
+  const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+  const isTiff = (head[0] === 0x49 && head[1] === 0x49 && head[2] === 42 && head[3] === 0) || (head[0] === 0x4d && head[1] === 0x4d && head[2] === 0 && head[3] === 42);
+  if (isTiff) return { ...(await decodeTiff(await file.arrayBuffer())), name };
+  let bmp;
+  try { bmp = await createImageBitmap(file, { colorSpaceConversion: "none", premultiplyAlpha: "none" }); }
+  catch { throw new Error(`Couldn't read "${name}" as an image. Use a JPG, PNG or TIFF.`); }
+  const c = document.createElement("canvas"); c.width = bmp.width; c.height = bmp.height;
+  const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(bmp, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height).data, red = new Uint8Array(c.width * c.height);
+  for (let i = 0; i < red.length; i++) red[i] = d[i * 4];
+  return { red, W: c.width, H: c.height, name };
+}
+function binarizeOf(img) { return PVG.imbinarize(img.red).bw; }
+
+function drawMask(canvas, mask, W, H, maxSide) {
+  const s = Math.max(1, Math.min(4, Math.floor((maxSide || 900) / Math.max(W, H)))) || 1;
+  const sc = Math.max(W, H) > (maxSide || 900) ? (maxSide || 900) / Math.max(W, H) : s;
+  canvas.width = Math.round(W * sc); canvas.height = Math.round(H * sc);
+  const off = document.createElement("canvas"); off.width = W; off.height = H;
+  const og = off.getContext("2d"), id = og.createImageData(W, H);
+  for (let i = 0; i < W * H; i++) { const v = mask[i] ? 255 : 0; id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 255; }
+  og.putImageData(id, 0, 0);
+  const g = canvas.getContext("2d"); g.imageSmoothingEnabled = sc < 1; g.drawImage(off, 0, 0, canvas.width, canvas.height);
+  return { g, sc };
+}
+function hsv(h) { const f = (n) => { const k = (n + h * 6) % 6; return Math.round(255 * (1 - Math.max(0, Math.min(k, 4 - k, 1)))); }; return `rgb(${f(5)},${f(3)},${f(1)})`; }
+function drawTraces(canvas, mask, W, H, bounds, keep) {
+  const { g, sc } = drawMask(canvas, mask, W, H, 1000);
+  g.lineWidth = Math.max(1.5, sc * 0.9); g.lineJoin = "round";
+  bounds.forEach((b, i) => {
+    if (keep && !keep[i]) return;
+    g.strokeStyle = hsv((i * 0.37) % 1); g.beginPath();
+    b.forEach((p, j) => { const x = (p[1] + 0.5) * sc, y = (p[0] + 0.5) * sc; j ? g.lineTo(x, y) : g.moveTo(x, y); });
+    g.stroke();
+  });
+}
+
+function showDrop(which) {
+  const img = S[which], el = which === "t" ? $("dropT") : $("dropL"), label = which === "t" ? "Transverse slice" : "Longitudinal slice";
+  if (!img) { el.classList.remove("filled"); el.innerHTML = `<span class="t">${label}</span><span class="s">Drop JPG, PNG or TIFF</span>`; return; }
+  el.classList.add("filled");
+  el.innerHTML = `<canvas role="img" aria-label="${label}, binarized"></canvas><span class="meta"><b>${label}: ${escapeHtml(img.name)}</b><span>${img.W} × ${img.H}</span></span>`;
+  el.setAttribute("aria-label", `${label}: ${img.name}, ${img.W} by ${img.H} pixels. Activate to replace.`);
+  drawMask(el.querySelector("canvas"), binarizeOf(img), img.W, img.H, 600);
+}
+function escapeHtml(s) { return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+async function setFiles(assign) {
+  $("loadErr").hidden = true;
+  try {
+    for (const [which, file] of assign) { S[which] = await loadImage(file); showDrop(which); }
+  } catch (e) { $("loadErr").textContent = e.message; $("loadErr").hidden = false; }
+  $("swap").disabled = !(S.t && S.l);
+  recompute("images");
+}
+function guessPair(files) {
+  const t = files.find((f) => /trans/i.test(f.name)) || files[0];
+  return [["t", t], ["l", files.find((f) => f !== t)]];
+}
+function wireDrop(el, input, which) {
+  el.addEventListener("click", () => input.click());
+  input.addEventListener("change", () => { if (input.files[0]) setFiles([[which, input.files[0]]]); input.value = ""; });
+  el.addEventListener("dragover", (e) => { e.preventDefault(); e.stopPropagation(); el.classList.add("over"); });
+  el.addEventListener("dragleave", () => el.classList.remove("over"));
+  el.addEventListener("drop", (e) => {
+    e.preventDefault(); e.stopPropagation(); el.classList.remove("over");
+    const fs = [...e.dataTransfer.files];
+    if (fs.length >= 2) setFiles(guessPair(fs.slice(0, 2)));
+    else if (fs.length) setFiles([[which, fs[0]]]);
+  });
+}
+document.addEventListener("dragover", (e) => e.preventDefault());
+document.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const fs = [...e.dataTransfer.files];
+  if (fs.length >= 2) setFiles(guessPair(fs.slice(0, 2)));
+  else if (fs.length === 1) setFiles([[!S.t ? "t" : !S.l ? "l" : (/trans/i.test(fs[0].name) ? "t" : "l"), fs[0]]]);
+});
+
+/* example slides: CT - Trans / CT - Long (transverse stored as lossless PNG of the original TIFF pixels) */
+const EXAMPLE = { t: ["CT - Trans.jpg", "image/png", "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"], l: ["CT - Long.jpg", "image/jpeg", "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"] };
+function exampleFile([name, type, b64]) { const bin = atob(b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return new File([u8], name, { type }); }
+
+/* ---------------- pipeline ---------------- */
+function prep(img, inv) {
+  const bw = PVG.imbinarize(img.red).bw;
+  if (inv) for (let i = 0; i < bw.length; i++) bw[i] = bw[i] ? 0 : 1;
+  const mask = PVG.fillHoles(bw, img.H, img.W);
+  return { mask, bounds: PVG.bwboundaries(mask, img.H, img.W), W: img.W, H: img.H };
+}
+function setEnabled(id, on) { $(id).setAttribute("aria-disabled", on ? "false" : "true"); }
+
+function recompute(what) {
+  if (what === "images" || what === "invT") S.prepT = S.t ? prep(S.t, S.invT) : null;
+  if (what === "images" || what === "invL") { S.prepL = S.l ? prep(S.l, S.invL) : null; S.filter = null; }
+  updateReadout();
+  // step 3
+  setEnabled("s3", !!S.prepT);
+  if (S.prepT) {
+    drawTraces($("traceT"), S.prepT.mask, S.prepT.W, S.prepT.H, S.prepT.bounds);
+    const nS = S.prepT.bounds.filter((b) => b.length <= 4).length;
+    $("traceTcap").textContent = `${S.prepT.bounds.length} cells traced; ${nS} too small to be an area (will be skipped).`;
+  }
+  // step 4
+  const p = getParams();
+  setEnabled("s4", !!S.prepL);
+  S.lengths = null;
+  if (S.prepL) {
+    const { heights, counted } = PVG.cellHeights(S.prepL.bounds, S.prepL.H);
+    S.heights = { heights, counted };
+    drawTraces($("traceL"), S.prepL.mask, S.prepL.W, S.prepL.H, S.prepL.bounds, counted);
+    const nc = counted.filter(Boolean).length;
+    $("traceLcap").textContent = `${nc} of ${counted.length} cells counted (${counted.length - nc} edge-clipped).`;
+    const lf = Number.isFinite(p.length_factor) && p.length_factor > 0 ? p.length_factor : 1;
+    const scaled = heights.map((h) => lf * h);
+    if (scaled.length) {
+      const lo = Math.min(...scaled), hi = Math.max(...scaled), pad = Math.max(1, 0.05 * (hi - lo));
+      S.range = [lo - pad, hi + pad];
+      if (!S.filter) S.filter = [lo - pad, hi + pad];
+      setupRange(scaled);
+      $("lengthsTxt").textContent = "Measured lengths: " + [...scaled].sort((a, b) => a - b).map((v) => v.toFixed(1)).join(", ");
+    } else {
+      S.range = null; drawHist($("histL"), [], null);
+      $("keptTxt").textContent = "";
+      $("lengthsTxt").textContent = `None of the ${counted.length} cells in the longitudinal image can be measured, because every one runs off the top or bottom edge. Use an image that shows whole cells with some blank space above and below them, or try inverting it.`;
+    }
+  }
+  fitStep();
+}
+
+function fitStep() {
+  const p = getParams(), err = $("fitErr");
+  err.hidden = true; $("fitStats").textContent = ""; S.lengths = null;
+  const ok = S.prepL && S.heights && S.heights.heights.length && S.filter;
+  setEnabled("s5", !!ok);
+  if (ok) {
+    try {
+      if (!(p.length_factor > 0)) throw new Error("Set a length factor above zero.");
+      const f = PVG.filterHeights(S.heights.heights, S.filter[0], S.filter[1], p.length_factor);
+      const fitted = PVG.fitDistribution(f.height, p.distribution);
+      S.lengths = { ...f, fitted };
+      const D = Number.isFinite(p.voxel_depth) && Number.isFinite(p.radius) && Number.isFinite(p.wall_thickness) ? PVG.derive(p, 1, 1) : null;
+      $("fitStats").innerHTML = `Kept ${f.height.length} of ${S.heights.heights.length} cells<br>
+        Average ${f.avg.toFixed(3)} px, standard deviation ${f.std.toFixed(3)} px (N−1)<br>
+        ${fitted.name} parameters: [${fitted.params.map((v) => v.toFixed(5)).join(", ")}]` +
+        (D ? `<br>Expected end caps per cell column: ${(D.working / f.avg).toFixed(2)}` : "");
+      const g = PVG.makeRng(0), draws = new Float64Array(20000);
+      for (let i = 0; i < draws.length; i++) draws[i] = fitted.sample(g);
+      drawFit($("histFit"), f.height, draws);
+    } catch (e) { err.textContent = e.message; err.hidden = false; clearCanvas($("histFit")); }
+  }
+  const canGen = !!(S.lengths && S.prepT && !paramProblems(p).length && PVG.derive(p, S.prepT.H, S.prepT.W).shape.every((v) => v > 0));
+  setEnabled("s6", !!(S.prepT && S.prepL));
+  $("gen").disabled = !canGen || S.busy;
+  $("gen").textContent = p.n_models > 1 ? `Generate ${p.n_models} models` : "Generate model";
+  markStale();
+}
+function markStale() {
+  if (!S.models) return;
+  const now = JSON.stringify([getParams(), S.filter, S.invT, S.invL, S.t && S.t.name, S.l && S.l.name]);
+  $("stale").hidden = now === S.genParams;
+}
+
+/* ---------------- dual range ---------------- */
+function setupRange() {
+  const [mn, mx] = S.range, step = Math.max(0.1, (mx - mn) / 200);
+  for (const el of [$("rLo"), $("rHi")]) { el.min = mn; el.max = mx; el.step = step; }
+  $("rLo").value = S.filter[0]; $("rHi").value = S.filter[1];
+  syncRange();
+}
+function syncRange() {
+  const [mn, mx] = S.range, [a, b] = S.filter, pct = (v) => ((v - mn) / (mx - mn)) * 100;
+  $("rfill").style.left = pct(a) + "%"; $("rfill").style.width = Math.max(0, pct(b) - pct(a)) + "%";
+  $("nLo").value = a.toFixed(1); $("nHi").value = b.toFixed(1);
+  const p = getParams(), lf = p.length_factor > 0 ? p.length_factor : 1;
+  const scaled = S.heights.heights.map((h) => lf * h), kept = scaled.filter((v) => v > a && v < b).length;
+  $("keptTxt").textContent = `Keeping ${kept} of ${scaled.length} cells`;
+  drawHist($("histL"), scaled, S.filter);
+}
+function onRange(which, v) {
+  let [a, b] = S.filter;
+  if (which === 0) a = Math.min(v, b); else b = Math.max(v, a);
+  S.filter = [a, b];
+  $("rLo").value = a; $("rHi").value = b;
+  syncRange(); fitStep();
+}
+$("rLo").addEventListener("input", (e) => onRange(0, Number(e.target.value)));
+$("rHi").addEventListener("input", (e) => onRange(1, Number(e.target.value)));
+$("nLo").addEventListener("change", (e) => { const v = Number(e.target.value); if (Number.isFinite(v)) onRange(0, v); });
+$("nHi").addEventListener("change", (e) => { const v = Number(e.target.value); if (Number.isFinite(v)) onRange(1, v); });
+
+/* ---------------- plots ---------------- */
+function prepCanvas(c, w, h) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1), cw = c.clientWidth || w;
+  const hh = Math.round(cw * h / w);
+  c.width = Math.round(cw * dpr); c.height = Math.round(hh * dpr);
+  const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, W: cw, H: hh };
+}
+function clearCanvas(c) { const g = c.getContext("2d"); g.clearRect(0, 0, c.width, c.height); }
+function histBins(v, n, lo, hi) {
+  if (lo === undefined) { lo = Math.min(...v); hi = Math.max(...v); }
+  if (hi === lo) { lo -= 0.5; hi += 0.5; }
+  const counts = new Array(n).fill(0), w = (hi - lo) / n;
+  for (const x of v) { if (x < lo || x > hi) continue; let k = Math.floor((x - lo) / w); if (k >= n) k = n - 1; counts[k]++; }
+  return { counts, lo, hi, w };
+}
+function axes(g, W, H, x0, x1, y1, xlabel, ylabel) {
+  const L = 46, R = 12, T = 12, B = 40, pw = W - L - R, ph = H - T - B;
+  const ink = css("--ink"), muted = css("--muted"), line = css("--line");
+  g.font = "12px 'Atkinson Hyperlegible', system-ui, sans-serif"; g.fillStyle = muted; g.strokeStyle = line; g.lineWidth = 1;
+  const X = (v) => L + ((v - x0) / (x1 - x0)) * pw, Y = (v) => T + ph - (v / y1) * ph;
+  g.beginPath(); g.moveTo(L, T); g.lineTo(L, T + ph); g.lineTo(L + pw, T + ph); g.stroke();
+  const ticks = (a, b, n) => { const raw = (b - a) / n, m = Math.pow(10, Math.floor(Math.log10(raw))), st = [1, 2, 5, 10].map((q) => q * m).find((q) => q >= raw); const out = []; for (let v = Math.ceil(a / st) * st; v <= b + 1e-9; v += st) out.push(+v.toFixed(10)); return out; };
+  g.textAlign = "center"; g.textBaseline = "top";
+  for (const t of ticks(x0, x1, 6)) { g.fillText(String(+t.toPrecision(6)), X(t), T + ph + 5); }
+  g.textAlign = "right"; g.textBaseline = "middle";
+  for (const t of ticks(0, y1, 4)) { g.fillText(String(+t.toPrecision(3)), L - 6, Y(t)); }
+  g.fillStyle = ink; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillText(xlabel, L + pw / 2, H - 4);
+  if (ylabel) { g.save(); g.translate(12, T + ph / 2); g.rotate(-Math.PI / 2); g.fillText(ylabel, 0, 0); g.restore(); }
+  return { X, Y, L, T, pw, ph };
+}
+function drawHist(c, v, band) {
+  const { g, W, H } = prepCanvas(c, 560, 380); g.clearRect(0, 0, W, H);
+  if (!v.length) return;
+  const nb = Math.min(12, Math.max(3, v.length)), h = histBins(v, nb), ymax = Math.max(...h.counts) * 1.1 || 1;
+  const x0 = band ? Math.min(h.lo, S.range[0]) : h.lo, x1 = band ? Math.max(h.hi, S.range[1]) : h.hi;
+  const A = axes(g, W, H, x0, x1, ymax, "cell length (pixels)", "count");
+  if (band) { g.fillStyle = css("--accent-soft"); const a = Math.max(x0, band[0]), b = Math.min(x1, band[1]); g.fillRect(A.X(a), A.T, Math.max(0, A.X(b) - A.X(a)), A.ph); }
+  g.fillStyle = css("--plot-bar"); g.strokeStyle = css("--surface");
+  h.counts.forEach((n, k) => { if (!n) return; const xa = A.X(h.lo + k * h.w), xb = A.X(h.lo + (k + 1) * h.w); g.fillRect(xa, A.Y(n), xb - xa, A.Y(0) - A.Y(n)); g.strokeRect(xa, A.Y(n), xb - xa, A.Y(0) - A.Y(n)); });
+  if (band) { g.strokeStyle = css("--accent"); g.lineWidth = 2; for (const b of band) { if (b < x0 || b > x1) continue; g.beginPath(); g.moveTo(A.X(b), A.T); g.lineTo(A.X(b), A.T + A.ph); g.stroke(); } }
+}
+function drawFit(c, heights, draws) {
+  const { g, W, H } = prepCanvas(c, 560, 360); g.clearRect(0, 0, W, H);
+  const nb = Math.min(10, Math.max(3, heights.length)), hm = histBins(heights, nb);
+  const dArr = Array.from(draws), hd = histBins(dArr, 60);
+  const totM = heights.length, totD = dArr.length;
+  const densM = hm.counts.map((n) => n / (totM * hm.w)), densD = hd.counts.map((n) => n / (totD * hd.w));
+  const x0 = Math.min(hm.lo, hd.lo), x1 = Math.max(hm.hi, hd.hi), ymax = Math.max(...densM, ...densD) * 1.1 || 1;
+  const A = axes(g, W, H, x0, x1, ymax, "cell length (pixels)", "density");
+  g.globalAlpha = 0.65; g.fillStyle = css("--plot-bar"); g.strokeStyle = css("--surface");
+  densM.forEach((d, k) => { if (!d) return; const xa = A.X(hm.lo + k * hm.w), xb = A.X(hm.lo + (k + 1) * hm.w); g.fillRect(xa, A.Y(d), xb - xa, A.Y(0) - A.Y(d)); g.strokeRect(xa, A.Y(d), xb - xa, A.Y(0) - A.Y(d)); });
+  g.globalAlpha = 1; g.strokeStyle = css("--plot-fit"); g.lineWidth = 2; g.beginPath();
+  densD.forEach((d, k) => { const xa = A.X(hd.lo + k * hd.w), xb = A.X(hd.lo + (k + 1) * hd.w); if (!k) g.moveTo(xa, A.Y(0)); g.lineTo(xa, A.Y(d)); g.lineTo(xb, A.Y(d)); if (k === densD.length - 1) g.lineTo(xb, A.Y(0)); });
+  g.stroke();
+}
+
+/* ---------------- generation ---------------- */
+async function generate() {
+  const p = getParams();
+  S.busy = true; $("gen").disabled = true; $("prog").hidden = false;
+  const bar = $("prog").firstElementChild, txt = $("genTxt");
+  const t0 = performance.now();
+  try {
+    const seed = p.seed < 0 ? (crypto.getRandomValues(new Uint32Array(1))[0]) : p.seed;
+    const g = PVG.makeRng(seed), D = PVG.derive(p, S.prepT.H, S.prepT.W), models = [];
+    const nC = S.prepT.bounds.length;
+    let last = 0;
+    for (let q = 1; q <= p.n_models; q++) {
+      txt.textContent = `Model ${q} of ${p.n_models}: end caps…`;
+      await new Promise((r) => setTimeout(r));
+      const caps = PVG.generateEndCaps(nC, D.working, S.lengths.fitted, S.lengths.avg, g);
+      const m = await PVG.buildModel(S.prepT.bounds, caps, S.prepT.H, S.prepT.W, p, g, async (i, n) => {
+        const frac = ((q - 1) + (i + 1) / n) / p.n_models;
+        bar.style.width = (frac * 100).toFixed(1) + "%";
+        if (performance.now() - last > 60) { txt.textContent = `Model ${q} of ${p.n_models}: cell ${i + 1} of ${n}…`; last = performance.now(); await new Promise((r) => setTimeout(r)); }
+      });
+      models.push(m);
+    }
+    S.models = models; S.modelIdx = 0; S.genName = p.output_name.trim();
+    S.genParams = JSON.stringify([getParams(), S.filter, S.invT, S.invL, S.t && S.t.name, S.l && S.l.name]);
+    const solid = models[0].vol.reduce((s, v) => s + (v ? 1 : 0), 0) / models[0].vol.length;
+    txt.textContent = `${models.length} model${models.length > 1 ? "s" : ""} in ${((performance.now() - t0) / 1000).toFixed(1)} s. ${models[0].shape.join(" × ")} voxels, solid fraction ${solid.toFixed(4)}, seed ${seed}${p.seed < 0 ? " (random)" : ""}.`;
+    $("results").hidden = false; $("stale").hidden = true;
+    const pick = $("modelPick"); pick.innerHTML = models.map((_, i) => `<option value="${i}">${i + 1}</option>`).join("");
+    $("modelPickL").hidden = models.length < 2;
+    showModel(0); setDlLabel();
+  } catch (e) { txt.textContent = "Generation failed: " + e.message; console.error(e); }
+  S.busy = false; $("prog").hidden = true; bar.style.width = "0"; fitStep();
+}
+$("gen").addEventListener("click", generate);
+
+function showModel(i) {
+  S.modelIdx = i; const m = S.models[i];
+  drawSlices(m);
+  setMesh(m);
+}
+$("modelPick").addEventListener("change", (e) => showModel(Number(e.target.value)));
+
+function drawSlices(m) {
+  const [d, h, w] = m.shape, box = $("slices"); box.innerHTML = "";
+  const ks = [0, 1, 2, 3, 4].map((t) => Math.floor(t * (d - 1) / 4));
+  const mk = (title, W, H, get) => {
+    const f = document.createElement("figure"), c = document.createElement("canvas");
+    c.width = W; c.height = H; c.setAttribute("role", "img"); c.setAttribute("aria-label", title);
+    const g = c.getContext("2d"), id = g.createImageData(W, H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const v = get(y, x), o = (y * W + x) * 4; id.data[o] = id.data[o + 1] = id.data[o + 2] = v; id.data[o + 3] = 255; }
+    g.putImageData(id, 0, 0);
+    f.appendChild(c); const cap = document.createElement("figcaption"); cap.textContent = title; f.appendChild(cap); box.appendChild(f);
+    return c;
+  };
+  for (const k of ks) mk(`Slice ${k}`, w, h, (y, x) => m.vol[k * h * w + y * w + x]);
+  const xc = Math.floor(w / 2);
+  const lc = mk("Longitudinal cut", d, h, (y, z) => m.vol[z * h * w + y * w + xc]);
+  lc.style.aspectRatio = `${w} / ${h}`;
+  $("sliceCap").textContent = `${d} × ${h} × ${w} voxels. Five evenly spaced slices through the stack, plus a longitudinal cut through the middle column (slices run left to right). White is cell wall.`;
+}
+
+/* ---------------- downloads ---------------- */
+let downloadsP = null;
+const getDownloads = () => (downloadsP ||= (window.claude && window.claude.use ? Promise.resolve(window.claude.use("downloads")).catch(() => null) : Promise.resolve(null)));
+setTimeout(getDownloads, 0);
+$("dl").addEventListener("click", async () => {
+  const name = S.genName || "Output Voxel Mesh", txt = $("dlTxt");
+  txt.textContent = "Preparing…";
+  await new Promise((r) => setTimeout(r));
+  const files = S.models.map((m, i) => ({ name: `${name}-${i + 1}.tiff`, data: PVG.writeTiff(m.vol, m.shape) }));
+  const dl = await getDownloads();
+  if (!dl) {
+    // standalone page: save each TIFF directly
+    for (const f of files) {
+      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([f.data], { type: "image/tiff" })); a.download = f.name;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    txt.textContent = files.length === 1 ? `Saved ${files[0].name}.` : `Saved ${files.length} TIFF files.`;
+    return;
+  }
+  // inside the Claude viewer: try .tiff first; the viewer may only accept certain file types
+  try {
+    for (const f of files) await dl.save({ filename: f.name, data: new Blob([f.data]) });
+    txt.textContent = files.length === 1 ? `Saved ${files[0].name}.` : `Saved ${files.length} TIFF files.`;
+  } catch (e) {
+    if (e && e.code === "declined") { txt.textContent = "Download cancelled."; return; }
+    if (e && (e.code === "rejected_extension" || e.code === "extension_not_enabled")) {
+      try {
+        await dl.save({ filename: `${name}.zip`, data: PVG.zip(files) });
+        txt.textContent = "The Claude viewer doesn't allow .tiff downloads, so the TIFF stacks were saved inside a .zip. Open the standalone copy of this app in your browser to save .tiff files directly.";
+      } catch (e2) { txt.textContent = e2 && e2.code === "declined" ? "Download cancelled." : `Couldn't save the file (${(e2 && e2.message) || e2}).`; }
+      return;
+    }
+    txt.textContent = `Couldn't save the file (${(e && e.message) || e}).`;
+  }
+});
+const setDlLabel = () => { const n = S.models ? S.models.length : 1; $("dl").textContent = n > 1 ? `Download ${n} TIFF files` : "Download TIFF"; };
+
+/* ---------------- 3D viewer ---------------- */
+const V = {};
+function initViewer() {
+  if (V.renderer || !window.THREE) return !!V.renderer;
+  const canvas = $("viewer");
+  V.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  V.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  V.renderer.localClippingEnabled = true;
+  V.scene = new THREE.Scene();
+  V.camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100000);
+  V.scene.add(new THREE.HemisphereLight(0xffffff, 0x445544, 0.42));
+  const key = new THREE.DirectionalLight(0xffffff, 0.75); key.position.set(0.7, 1.1, 0.4);
+  const fillL = new THREE.DirectionalLight(0xffffff, 0.22); fillL.position.set(-1, -0.3, 0.6); V.camera.add(fillL);
+  V.camera.add(key); V.scene.add(V.camera);
+  V.controls = new THREE.OrbitControls(V.camera, canvas);
+  V.controls.enableDamping = true; V.controls.dampingFactor = 0.08;
+  V.planes = [new THREE.Plane(new THREE.Vector3(0, -1, 0), 0), new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0)];
+  const ro = new ResizeObserver(resize); ro.observe(canvas);
+  resize();
+  const loop = () => { requestAnimationFrame(loop); if ($("results").hidden) return; V.controls.update(); V.renderer.render(V.scene, V.camera); };
+  loop();
+  return true;
+}
+function resize() {
+  const c = $("viewer"), w = c.clientWidth, h = c.clientHeight;
+  if (!w || !h) return;
+  V.renderer.setSize(w, h, false); V.camera.aspect = w / h; V.camera.updateProjectionMatrix();
+}
+const FACES = [
+  { d: [-1, 0, 0], n: [-1, 0, 0], c: [[0, 1, 0], [0, 0, 0], [0, 1, 1], [0, 0, 1]] },
+  { d: [1, 0, 0], n: [1, 0, 0], c: [[1, 1, 1], [1, 0, 1], [1, 1, 0], [1, 0, 0]] },
+  { d: [0, -1, 0], n: [0, -1, 0], c: [[1, 0, 1], [0, 0, 1], [1, 0, 0], [0, 0, 0]] },
+  { d: [0, 1, 0], n: [0, 1, 0], c: [[0, 1, 1], [1, 1, 1], [0, 1, 0], [1, 1, 0]] },
+  { d: [0, 0, -1], n: [0, 0, -1], c: [[1, 0, 0], [0, 0, 0], [1, 1, 0], [0, 1, 0]] },
+  { d: [0, 0, 1], n: [0, 0, 1], c: [[0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]] },
+];
+// three.js axes: X = image column, Y = slice (stem axis, up), Z = image row
+function pooled(m, s) {
+  const [D, Hh, Ww] = m.shape, nx = Math.ceil(Ww / s), ny = Math.ceil(D / s), nz = Math.ceil(Hh / s), occ = new Uint8Array(nx * ny * nz);
+  for (let z = 0; z < D; z++) { const oy = ((z / s) | 0) * nz * nx; for (let r = 0; r < Hh; r++) { const oz = oy + ((r / s) | 0) * nx, base = z * Hh * Ww + r * Ww; for (let c = 0; c < Ww; c++) if (m.vol[base + c]) occ[oz + ((c / s) | 0)] = 1; } }
+  return { occ, nx, ny, nz };
+}
+function countFaces(P) {
+  const { occ, nx, ny, nz } = P; let n = 0;
+  for (let y = 0; y < ny; y++) for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
+    if (!occ[(y * nz + z) * nx + x]) continue;
+    if (x === 0 || !occ[(y * nz + z) * nx + x - 1]) n++;
+    if (x === nx - 1 || !occ[(y * nz + z) * nx + x + 1]) n++;
+    if (y === 0 || !occ[((y - 1) * nz + z) * nx + x]) n++;
+    if (y === ny - 1 || !occ[((y + 1) * nz + z) * nx + x]) n++;
+    if (z === 0 || !occ[(y * nz + z - 1) * nx + x]) n++;
+    if (z === nz - 1 || !occ[(y * nz + z + 1) * nx + x]) n++;
+  }
+  return n;
+}
+const FACE_BUDGET = 900000;
+function setMesh(m) {
+  if (!initViewer()) { $("vinfo").textContent = "3D view unavailable: the 3D library didn't load."; return; }
+  const want = Number($("detail").value);
+  let s = want || 1, P = pooled(m, s), nf = countFaces(P);
+  if (!want) while (nf > FACE_BUDGET && s < 8) { s++; P = pooled(m, s); nf = countFaces(P); }
+  const { occ, nx, ny, nz } = P, pos = new Float32Array(nf * 12), nor = new Float32Array(nf * 12), idx = new Uint32Array(nf * 6);
+  const [D, Hh, Ww] = m.shape, cx = Ww / 2, cy = D / 2, cz = Hh / 2;
+  let f = 0;
+  const at = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < nx && y < ny && z < nz && occ[(y * nz + z) * nx + x];
+  for (let y = 0; y < ny; y++) for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
+    if (!occ[(y * nz + z) * nx + x]) continue;
+    for (const F of FACES) {
+      if (at(x + F.d[0], y + F.d[1], z + F.d[2])) continue;
+      const v0 = f * 4;
+      for (let k = 0; k < 4; k++) {
+        const o = (v0 + k) * 3, cc = F.c[k];
+        pos[o] = Math.min(Ww, (x + cc[0]) * s) - cx; pos[o + 1] = Math.min(D, (y + cc[1]) * s) - cy; pos[o + 2] = Math.min(Hh, (z + cc[2]) * s) - cz;
+        nor[o] = F.n[0]; nor[o + 1] = F.n[1]; nor[o + 2] = F.n[2];
+      }
+      const i6 = f * 6; idx[i6] = v0; idx[i6 + 1] = v0 + 1; idx[i6 + 2] = v0 + 2; idx[i6 + 3] = v0 + 2; idx[i6 + 4] = v0 + 1; idx[i6 + 5] = v0 + 3;
+      f++;
+    }
+  }
+  if (V.group) { V.scene.remove(V.group); V.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+  geo.setIndex(new THREE.BufferAttribute(idx, 1));
+  V.group = new THREE.Group();
+  V.front = new THREE.MeshLambertMaterial({ color: new THREE.Color(css("--wall3d")), side: THREE.FrontSide, clippingPlanes: V.planes });
+  V.back = new THREE.MeshBasicMaterial({ color: new THREE.Color(css("--cut3d")), side: THREE.BackSide, clippingPlanes: V.planes });
+  V.group.add(new THREE.Mesh(geo, V.front), new THREE.Mesh(geo, V.back));
+  const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(Ww, D, Hh)), new THREE.LineBasicMaterial({ color: new THREE.Color(css("--muted")), transparent: true, opacity: 0.45 }));
+  V.group.add(box);
+  V.scene.add(V.group);
+  V.dims = [Ww, D, Hh];
+  applyCuts();
+  if (!V.framed || V.framedFor !== m.shape.join()) { resetView(); V.framed = true; V.framedFor = m.shape.join(); }
+  $("vinfo").textContent = `${D} × ${Hh} × ${Ww} voxels${s > 1 ? `, shown at 1/${s} detail` : ""}\n${nf.toLocaleString()} faces`;
+  $("vinfo").style.whiteSpace = "pre";
+}
+function resetView() {
+  const [w, h, d] = V.dims, r = Math.max(w, h, d);
+  V.camera.position.set(r * 1.7, r * 1.15, r * 2.05); V.controls.target.set(0, 0, 0);
+  V.camera.near = r / 200; V.camera.far = r * 20; V.camera.updateProjectionMatrix(); V.controls.update();
+}
+function applyCuts() {
+  if (!V.dims) return;
+  const [w, h] = V.dims;
+  V.planes[0].constant = -h / 2 + (h + 0.01) * ($("cutH").value / 100);
+  V.planes[1].constant = -w / 2 + (w + 0.01) * ($("cutX").value / 100);
+}
+$("cutH").addEventListener("input", applyCuts);
+$("cutX").addEventListener("input", applyCuts);
+$("spin").addEventListener("change", (e) => { if (V.controls) { V.controls.autoRotate = e.target.checked; V.controls.autoRotateSpeed = 1.6; } });
+$("resetView").addEventListener("click", () => V.dims && resetView());
+$("detail").addEventListener("change", () => S.models && setMesh(S.models[S.modelIdx]));
+const themeMQ = window.matchMedia("(prefers-color-scheme: dark)");
+themeMQ.addEventListener && themeMQ.addEventListener("change", () => {
+  if (V.front) { V.front.color.set(css("--wall3d")); V.back.color.set(css("--cut3d")); }
+  if (S.prepL && S.range) syncRange(); if (S.lengths) fitStep();
+});
+
+/* ---------------- wire up ---------------- */
+buildParams();
+wireDrop($("dropT"), $("fileT"), "t");
+wireDrop($("dropL"), $("fileL"), "l");
+$("swap").addEventListener("click", () => { [S.t, S.l] = [S.l, S.t]; [S.invT, S.invL] = [S.invL, S.invT]; $("invT").checked = S.invT; $("invL").checked = S.invL; showDrop("t"); showDrop("l"); recompute("images"); });
+$("example").addEventListener("click", () => setFiles([["t", exampleFile(EXAMPLE.t)], ["l", exampleFile(EXAMPLE.l)]]));
+$("invT").addEventListener("change", (e) => { S.invT = e.target.checked; recompute("invT"); });
+$("invL").addEventListener("change", (e) => { S.invL = e.target.checked; recompute("invL"); });
+let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (S.prepL && S.range) syncRange(); if (S.lengths) fitStep(); }, 150); });
+recompute("init");
+</script>
+</body>
+</html>

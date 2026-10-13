@@ -1,0 +1,1966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PlantVG: How the Plant Voxel Generator Works</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff; --alt:#f0f0f0; --ink:#303030; --muted:#4f4f4f; --cap:#767576; --line:#dddddd;
+  --burg:#9d2235; --burg-d:#6f1523; --blue:#025697; --blue-h:#002f6c; --title:#002f6c; --eb:#9d2235;
+  --deep:#0b2340; --gold:#ffc425; --bone:#ece5d3; --frame:#d9dbe0; --on:#ffffff;
+  --plot-bar:#025697; --plot-fit:#9d2235; --band:#f6e3e6; --sel:#9d2235;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1a2c; --alt:#182740; --ink:#e7eaf0; --muted:#bcc4d1; --cap:#9aa4b6; --line:#2b3b58;
+    --burg:#c0394f; --burg-d:#8e1f31; --blue:#6aaeff; --blue-h:#9cc9ff; --title:#dbe7ff; --eb:#f19aaa;
+    --deep:#071427; --frame:#060d18; --on:#ffffff;
+    --plot-bar:#6aaeff; --plot-fit:#f19aaa; --band:#3a2233; --sel:#f19aaa; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1a2c; --alt:#182740; --ink:#e7eaf0; --muted:#bcc4d1; --cap:#9aa4b6; --line:#2b3b58;
+  --burg:#c0394f; --burg-d:#8e1f31; --blue:#6aaeff; --blue-h:#9cc9ff; --title:#dbe7ff; --eb:#f19aaa;
+  --deep:#071427; --frame:#060d18; --on:#ffffff;
+  --plot-bar:#6aaeff; --plot-fit:#f19aaa; --band:#3a2233; --sel:#f19aaa; color-scheme:dark;
+}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;height:100%;background:var(--frame);color:var(--ink);font-family:Rubik,Arial,system-ui,sans-serif;font-size:21px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.app{height:100%;display:flex;flex-direction:column}
+.viewport{position:relative;flex:1;min-height:0;overflow:hidden}
+.stage{position:absolute;left:50%;top:50%;width:1600px;height:900px;transform-origin:center center;background:var(--bg);overflow:hidden}
+.bar{flex:none;display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--deep);color:#fff;font-size:15px}
+.bar button,.bar select{font:inherit;font-size:15px;background:transparent;color:#fff;border:1px solid #3d5577;padding:6px 12px;cursor:pointer;border-radius:0}
+.bar select{max-width:min(52vw,420px)}
+.bar select option{color:#000}
+.bar button:hover{border-color:#fff}
+.bar .grow{flex:1}
+.bar .count{font-variant-numeric:tabular-nums;min-width:4.5em;text-align:center}
+.bar .kbd{color:#b9c6da;font-size:13px}
+@media (max-width:560px){.bar .kbd{display:none}}
+
+/* slide frame */
+.slide{position:absolute;inset:0 0 50px 0;display:none;flex-direction:column;padding:40px 72px 22px}
+.slide.on{display:flex}
+.head{flex:none;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:22px}
+.eb{margin:0 0 4px;font-family:Montserrat,Arial,sans-serif;font-weight:600;font-size:17px;color:var(--eb)}
+.head h2{margin:0;font-family:Montserrat,Arial,sans-serif;font-weight:700;font-size:44px;line-height:1.12;color:var(--title);letter-spacing:-.01em}
+.body{flex:1;min-height:0;display:grid;gap:36px}
+.cols-2{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.cols-52{grid-template-columns:minmax(0,5fr) minmax(0,7fr)}
+.cols-43{grid-template-columns:minmax(0,4fr) minmax(0,8fr)}
+.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.stack{display:flex;flex-direction:column;gap:16px;min-height:0}
+p{margin:0}
+.lede{color:var(--ink);max-width:40ch}
+.note{color:var(--muted);font-size:18px}
+.small{font-size:16px;color:var(--cap)}
+.foot{position:absolute;left:0;right:0;bottom:0;height:50px;background:var(--burg);border-top:5px solid var(--gold);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 18px;font-size:17px}
+.foot .r{display:flex;gap:24px;font-variant-numeric:tabular-nums}
+
+/* controls */
+.btn{font:inherit;font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;background:var(--blue);color:var(--bg);border:0;border-radius:0;padding:11px 16px;cursor:pointer;transition:background .2s}
+.btn:hover{background:var(--blue-h)}
+.btn.ghost{background:transparent;color:var(--blue);box-shadow:inset 0 0 0 2px var(--blue)}
+.btn.ghost:hover{background:var(--alt)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+:focus-visible{outline:3px solid #1199ff;outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center}
+.seg{align-self:flex-start;display:inline-flex;flex-wrap:wrap;border:2px solid var(--blue)}
+.seg button{font:inherit;font-size:16px;background:transparent;color:var(--blue);border:0;border-left:2px solid var(--blue);padding:7px 13px;cursor:pointer;border-radius:0}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed="true"]{background:var(--blue);color:var(--bg)}
+.ctl{display:grid;grid-template-columns:minmax(9em,auto) 1fr 4.2em;align-items:center;gap:4px 12px;font-size:17px}
+.ctl label{font-weight:500}
+.ctl output{font-variant-numeric:tabular-nums;text-align:right;color:var(--muted)}
+input[type=range]{width:100%;accent-color:var(--burg)}
+select.inp{font:inherit;font-size:17px;padding:6px 8px;background:var(--bg);color:var(--ink);border:1px solid #acacac;border-radius:4px}
+.readout{background:var(--alt);border-left:4px solid var(--burg);padding:12px 16px;font-size:17px;font-variant-numeric:tabular-nums;line-height:1.5}
+.readout b{font-weight:500;color:var(--ink)}
+.readout .err{color:var(--burg)}
+.panel{background:var(--alt);padding:16px 18px}
+.panel h3{margin:0 0 6px;font-size:20px;font-weight:500}
+
+/* viewers & canvases */
+.vbox{position:relative;background:var(--deep);min-height:0;overflow:hidden}
+.vbox canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+.vbox canvas:active{cursor:grabbing}
+.vtip{position:absolute;left:14px;bottom:10px;color:#b9c6da;font-size:14px;pointer-events:none}
+.vinfo{position:absolute;right:14px;top:10px;color:#e6edf7;font-size:14px;text-align:right;pointer-events:none;font-variant-numeric:tabular-nums}
+.vbusy{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;background:rgba(7,20,39,.55)}
+.vbusy[hidden]{display:none}
+canvas.px{image-rendering:pixelated;width:100%;height:auto;display:block;background:#000}
+canvas.plot{width:100%;height:auto;display:block}
+figure{margin:0;min-width:0}
+figcaption{font-size:15px;color:var(--cap);margin-top:6px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:15px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:14px;vertical-align:-2px;margin-right:6px}
+
+/* cover */
+.cover .cover-grid{flex:1;display:grid;grid-template-columns:minmax(0,7fr) minmax(0,6fr);gap:40px;min-height:0}
+.cover .cover-text{display:flex;flex-direction:column;justify-content:center;gap:18px;padding-bottom:20px}
+.cover h1{margin:0;font-family:Montserrat,Arial,sans-serif;font-weight:700;font-size:70px;line-height:1.04;color:var(--title);letter-spacing:-.02em}
+.cover .sub{font-size:30px;line-height:1.3;color:var(--ink);max-width:28ch}
+.cover .by{font-size:22px;color:var(--muted);margin-top:6px}
+.nowrap{white-space:nowrap}
+
+/* stalk + anatomy */
+.svgbox{width:100%;height:100%;display:block}
+.chip{font:inherit;font-size:17px;padding:7px 12px;background:var(--bg);color:var(--ink);border:2px solid var(--line);cursor:pointer;border-radius:0;text-align:left}
+.chip[aria-pressed="true"]{border-color:var(--burg);color:var(--burg)}
+
+/* chain */
+.chain{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0 38px;position:relative}
+.lvl{display:flex;flex-direction:column;gap:12px;align-items:stretch;position:relative}
+.lvl .name{font-weight:700;font-size:20px;text-align:center;min-height:2.6em;display:flex;align-items:flex-end;justify-content:center;line-height:1.2}
+.lvl button{font:inherit;font-size:19px;padding:12px 6px;border:2px solid transparent;cursor:pointer;border-radius:0;transition:background .2s,border-color .2s,opacity .2s}
+.lvl .mat{background:#fbe5cf;color:#3b2a14}
+.lvl .geo{background:#e2e5dc;color:#262e22}
+.lvl button.hi{border-color:var(--burg);box-shadow:0 0 0 3px var(--burg)}
+.lvl button.dim{opacity:.35}
+.lvl button.tag::after{content:attr(data-tag);display:block;font-size:13px;margin-top:2px;font-weight:700;color:var(--burg-d)}
+.chain svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+
+/* flow chart */
+.flow{position:relative;width:1456px;height:640px}
+.flow svg{position:absolute;inset:0;width:100%;height:100%}
+.node{position:absolute;font:inherit;font-size:18px;line-height:1.25;padding:10px 12px;border:2px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;text-align:center;border-radius:0;transition:border-color .2s,background .2s}
+.node:hover,.node:focus-visible{border-color:var(--blue);background:var(--alt)}
+.node.io{background:var(--deep);color:#fff;border-color:var(--deep)}
+.node .go{display:block;font-size:13px;color:var(--blue);margin-top:4px}
+.node.io .go{color:var(--gold)}
+.flowtip{position:absolute;left:0;bottom:0;width:560px;min-height:3em}
+
+/* scale ladder */
+.ladder{position:relative;width:100%;height:100%}
+.tile{position:absolute;width:190px;height:96px;border:2px solid var(--line);background:var(--bg);font:inherit;font-size:17px;line-height:1.2;color:var(--ink);cursor:pointer;border-radius:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;transition:border-color .2s,background .2s,opacity .2s}
+.tile small{font-size:14px;color:var(--cap)}
+.tile.hi{border-color:var(--burg);background:var(--band)}
+.tile.dim{opacity:.35}
+.tile.sel{box-shadow:0 0 0 4px var(--blue)}
+
+/* pixel painter */
+.grid12{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;background:var(--line);padding:2px;aspect-ratio:1;touch-action:none;user-select:none}
+.grid12 span{background:var(--bg);cursor:pointer}
+.grid12 span.on{background:var(--title)}
+
+/* committee */
+.people{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 24px}
+.people div{border-top:3px solid var(--burg);padding-top:8px}
+.people b{display:block;font-weight:500}
+.people span{font-size:17px;color:var(--muted)}
+
+/* narrow screens: let each slide flow */
+body.flowmode .viewport{overflow:auto}
+body.flowmode .stage{position:relative;left:auto;top:auto;width:auto;height:auto;transform:none!important;min-height:100%}
+body.flowmode .slide{position:relative;inset:auto;padding:24px 18px 70px}
+body.flowmode .head h2{font-size:30px}
+body.flowmode .cover h1{font-size:44px}
+body.flowmode .cover .sub{font-size:22px}
+body.flowmode .body,body.flowmode .cover .cover-grid{display:flex;flex-direction:column;gap:22px}
+body.flowmode .vbox{height:62vw;min-height:280px;flex:none}
+body.flowmode .tall{height:auto}
+body.flowmode .scrollx{overflow-x:auto}
+body.flowmode .foot{position:fixed;bottom:auto;top:auto;display:none}
+body.flowmode .chain{grid-template-columns:repeat(5,minmax(150px,1fr));overflow-x:auto}
+body.flowmode .ladder{height:640px;min-width:1100px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+#chain1 .lvl{gap:22px}
+#chain1 .lvl button{padding:34px 6px;font-size:23px}
+#chain1 .lvl .name{font-size:23px}
+#chain1 ~ .readout{font-size:20px;padding:18px 22px}
+
+</style>
+</head>
+<body>
+<div class="app">
+<div class="viewport" id="viewport">
+<main class="stage" id="stage" aria-live="off">
+
+<!-- 1 COVER -->
+<section class="slide cover" data-key="cover" data-title="Plant Voxel Generator (PlantVG)" aria-label="Title slide">
+  <div class="cover-grid">
+    <div class="cover-text">
+      <p class="eb">Fairleigh Dickinson University</p>
+      <h1>Plant Voxel Generator <span class="nowrap">(PlantVG)</span></h1>
+      <p class="sub">A low-cost, semi-automated method for creating voxel models of plant cells</p>
+      <p class="by">Christopher J. Stubbs</p>
+      <div class="row" style="margin-top:10px"><button class="btn" id="coverGen" type="button">Generate another stem</button></div>
+      <p class="note" id="coverInfo" aria-live="polite">Building a model from the two example slides…</p>
+    </div>
+    <div class="vbox"><canvas id="coverCanvas" aria-label="3D voxel model of plant cell walls. Drag to rotate, scroll to zoom."></canvas>
+      <p class="vtip">Drag to turn. Scroll to zoom.</p><div class="vbusy" id="coverBusy">Building model…</div></div>
+  </div>
+</section>
+
+<!-- 2 LODGING -->
+<section class="slide" data-key="lodging" data-title="Why Stalks Fail">
+  <header class="head"><p class="eb">Background</p><h2>Why Stalks Fail</h2></header>
+  <div class="body cols-52">
+    <div class="stack">
+      <p class="lede">Stalk lodging is when wind bends a stalk until it breaks or kinks near the base, before harvest. Lodged plants are hard or impossible to harvest.</p>
+      <p class="lede">In bending tests, stalks fail in two ways: the tissue itself breaks, or the cross-section flattens and folds, called Brazier buckling.</p>
+      <div class="panel stack" style="gap:12px">
+        <div class="ctl"><label for="windR">Wind load</label><input type="range" id="windR" min="0" max="1.3" step="0.01" value="0.2"><output id="windO"></output></div>
+        <div class="ctl"><label for="rindR">Rind thickness</label><input type="range" id="rindR" min="0.15" max="1" step="0.01" value="0.3"><output id="rindO"></output></div>
+        <div class="row"><button class="btn ghost" id="lodgeReset" type="button">Stand it back up</button></div>
+      </div>
+      <div class="readout" id="lodgeOut" aria-live="polite"></div>
+      <p class="small">An illustration of the two failure modes, not a fitted model.</p>
+    </div>
+    <svg class="svgbox" id="lodgeSvg" viewBox="0 0 760 620" role="img" aria-label="A stalk bending under wind, with its base cross-section shown in an inset"></svg>
+  </div>
+</section>
+
+<!-- 3 ANATOMY -->
+<section class="slide" data-key="anatomy" data-title="Inside a Maize Stalk">
+  <header class="head"><p class="eb">Background: physiology</p><h2>Inside a Maize Stalk</h2></header>
+  <div class="body cols-2">
+    <svg class="svgbox" id="anatSvg" viewBox="0 0 700 620" role="img" aria-label="Stalk cross-section with rind, pith and vascular bundles. Select a tissue to inspect it."></svg>
+    <div class="stack">
+      <p class="lede">Select a tissue on the cross-section, or use the buttons. Each tissue is built from different cells, and those cells set how the stalk carries load.</p>
+      <div class="row" id="anatChips"></div>
+      <div class="panel" style="display:grid;grid-template-columns:240px 1fr;gap:20px;align-items:start">
+        <svg id="anatZoom" viewBox="0 0 240 240" width="240" height="240" role="img" aria-label="Magnified sketch of the selected tissue's cells"></svg>
+        <div><h3 id="anatName"></h3><p id="anatText" style="font-size:19px"></p></div>
+      </div>
+      <p class="small">Drawn after the lignin-stained cross-section in Zhang (2013).</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4 SCALES -->
+<section class="slide" data-key="scales" data-title="Length Scales">
+  <header class="head"><p class="eb">Background: length scales</p><h2>Three Ways Into the Same Plant</h2></header>
+  <div class="body" style="grid-template-columns:minmax(0,9fr) minmax(0,4fr)">
+    <div class="ladder scrollx" id="ladder"></div>
+    <div class="stack">
+      <p class="lede">Pick a research community to see where it starts and which way it works. Select any level for its size.</p>
+      <div class="stack" style="gap:8px" id="scaleBtns"></div>
+      <div class="readout" id="scaleOut" aria-live="polite"></div>
+    </div>
+  </div>
+</section>
+
+
+
+<!-- 7 GAP -->
+<section class="slide" data-key="gap" data-title="What We Need, What We Have">
+  <header class="head"><p class="eb">The problem</p><h2>We Need 3D Cells. We Have Two Flat Slides.</h2></header>
+  <div class="body" style="grid-template-columns:minmax(0,4fr) minmax(0,5fr) minmax(0,4fr)">
+    <div class="stack">
+      <p class="lede">Micro-CT and confocal microscopes image cells in 3D, but they are costly and scarce. Almost every lab has a light microscope, which shows one flat cut at a time.</p>
+      <p class="lede">Cut the block two ways to see what a microscope slide captures.</p>
+      <span class="seg" id="gapSeg" role="group" aria-label="Cut direction"><button type="button" data-c="t" aria-pressed="true">Transverse cut</button><button type="button" data-c="l">Longitudinal cut</button></span>
+      <div class="ctl"><label for="gapPos">Cut position</label><input type="range" id="gapPos" min="0" max="1" step="0.005" value="0.5"><output id="gapPosO"></output></div>
+      <p class="note">PlantVG works backwards: from one cut of each kind, it builds a 3D block whose cuts look like the slides.</p>
+    </div>
+    <div class="vbox"><canvas id="gapCanvas" aria-label="3D voxel block with a cutting plane"></canvas><p class="vtip">Drag to turn.</p><div class="vbusy" id="gapBusy">Building model…</div></div>
+    <figure class="stack" style="gap:6px"><canvas class="px" id="gapSlice" aria-label="The flat section at the cutting plane"></canvas><figcaption id="gapCap">What the slide would show. White is cell wall.</figcaption></figure>
+  </div>
+</section>
+
+<!-- 8 VOXEL -->
+<section class="slide" data-key="voxel" data-title="From Pixels to Voxels">
+  <header class="head"><p class="eb">The plan</p><h2>From Pixels to Voxels</h2></header>
+  <div class="body" style="grid-template-columns:minmax(0,4fr) minmax(0,4fr) minmax(0,5fr)">
+    <div class="stack">
+      <p class="lede">A pixel is a square of an image. A voxel is a cube of a volume. Stack image slices and every pixel becomes a voxel.</p>
+      <p class="lede">Draw a cell outline on the grid, then give it depth.</p>
+      <div class="ctl"><label for="vxD">Slices</label><input type="range" id="vxD" min="1" max="14" step="1" value="8"><output id="vxDo"></output></div>
+      <div class="row"><button class="btn ghost" id="vxRing" type="button">Draw a cell</button><button class="btn ghost" id="vxClear" type="button">Clear</button></div>
+      <label class="row" style="font-size:18px"><input type="checkbox" id="vxCap"> Close the tube with an end cap halfway up</label>
+    </div>
+    <figure><div class="grid12" id="vxGrid" role="group" aria-label="12 by 12 pixel grid. Select pixels to draw."></div><figcaption>One slice: 12 × 12 pixels. Click or drag to draw.</figcaption></figure>
+    <figure><canvas class="plot" id="vxIso" style="aspect-ratio:1/1" aria-label="Isometric view of the stacked voxels"></canvas><figcaption id="vxCapTxt"></figcaption></figure>
+  </div>
+</section>
+
+<!-- 9 PROCESS -->
+<section class="slide" data-key="process" data-title="The Process">
+  <header class="head"><p class="eb">The process</p><h2>Two Slides In, One Voxel Model Out</h2></header>
+  <div class="body scrollx" style="display:block">
+    <div class="flow" id="flow"></div>
+  </div>
+</section>
+
+<!-- 10 BINARIZE -->
+<section class="slide" data-key="binarize" data-title="Step 1: Binarize">
+  <header class="head"><p class="eb">Step 1 of 8: input and pre-processing</p><h2>Turn a Stained Section Into Black and White</h2></header>
+  <div class="body" style="grid-template-columns:minmax(0,4fr) minmax(0,9fr)">
+    <div class="stack">
+      <p class="lede">Every pixel becomes wall or cell interior. Otsu's method picks the threshold that best separates the two humps of the brightness histogram.</p>
+      <div class="ctl"><label for="bzT">Threshold</label><input type="range" id="bzT" min="0" max="255" step="1" value="60"><output id="bzTo"></output></div>
+      <div class="row"><button class="btn" id="bzOtsu" type="button">Use Otsu's threshold</button></div>
+      <div class="row"><span style="font-size:17px">Cell walls are</span><span class="seg" id="bzSeg" role="group" aria-label="Wall color"><button type="button" data-w="dark" aria-pressed="true">Dark</button><button type="button" data-w="light">Light</button></span></div>
+      <label class="row" style="font-size:18px"><input type="checkbox" id="bzErr" checked> Mark pixels that disagree with the clean mask</label>
+      <div class="readout" id="bzOut" aria-live="polite"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto;gap:14px 22px;min-height:0">
+      <figure><canvas class="px" id="bzGray" style="width:auto;height:360px;max-width:100%" aria-label="Grayscale stained section"></canvas><figcaption>Simulated stained section, made from the example slide with uneven lighting, noise and debris added.</figcaption></figure>
+      <figure><canvas class="px" id="bzBin" style="width:auto;height:360px;max-width:100%" aria-label="Binarized section"></canvas><figcaption>Binary result. White is cell interior (lumen).</figcaption></figure>
+      <figure style="grid-column:1/3"><canvas class="plot" id="bzHist" style="aspect-ratio:5.2/1"></canvas></figure>
+    </div>
+  </div>
+</section>
+
+<!-- 11 TRACE -->
+<section class="slide" data-key="trace" data-title="Step 2: Trace Transverse Cells">
+  <header class="head"><p class="eb">Step 2 of 8: the transverse slide</p><h2>Find and Trace Every Cell</h2></header>
+  <div class="body cols-43">
+    <div class="stack">
+      <p class="lede">Holes are filled, touching white pixels are grouped into cells, and a boundary walk traces each cell's outline. Every outline becomes one tube in the model.</p>
+      <span class="seg" id="trSeg" role="group" aria-label="Processing stage"><button type="button" data-v="bin">Binary</button><button type="button" data-v="lab">Grouped</button><button type="button" data-v="tr" aria-pressed="true">Traced</button></span>
+      <p class="note">Select a cell to watch the boundary walk go around it.</p>
+      <div class="readout" id="trOut" aria-live="polite"></div>
+    </div>
+    <figure style="display:flex;flex-direction:column;align-items:center;min-height:0"><canvas class="px" id="trCan" style="width:auto;height:100%;max-height:600px;aspect-ratio:1;cursor:pointer" aria-label="Transverse slide with traced cell outlines"></canvas></figure>
+  </div>
+</section>
+
+<!-- 12 LENGTHS -->
+<section class="slide" data-key="lengths" data-title="Step 3: Measure Cell Lengths">
+  <header class="head"><p class="eb">Step 3 of 8: the longitudinal slide</p><h2>Measure How Long the Cells Are</h2></header>
+  <div class="body" style="grid-template-columns:minmax(0,3fr) minmax(0,4fr) minmax(0,5fr)">
+    <div class="stack">
+      <p class="lede">Each cell's length is the height of its outline. Cells cut off by the top or bottom edge are dropped, because their real length is unknown.</p>
+      <p class="note">Point at a cell to see its length. Then trim outliers with the range.</p>
+      <div class="readout" id="lnOut" aria-live="polite"></div>
+    </div>
+    <figure><canvas class="px" id="lnCan" style="cursor:crosshair" aria-label="Longitudinal slide with measured and dropped cells"></canvas>
+      <div class="legend" style="margin-top:8px"><span><i style="background:#ffc425"></i>Measured</span><span><i style="background:#8a93a3"></i>Touches the edge, dropped</span></div></figure>
+    <div class="stack">
+      <figure><canvas class="plot" id="lnHist" style="aspect-ratio:1.45/1"></canvas><figcaption>Cell lengths in pixels. The shaded band is what you keep.</figcaption></figure>
+      <div class="ctl"><label for="lnLo">Keep above</label><input type="range" id="lnLo" step="1"><output id="lnLoO"></output></div>
+      <div class="ctl"><label for="lnHi">Keep below</label><input type="range" id="lnHi" step="1"><output id="lnHiO"></output></div>
+    </div>
+  </div>
+</section>
+
+<!-- 13 FIT -->
+<section class="slide" data-key="fit" data-title="Step 4: Fit a Distribution">
+  <header class="head"><p class="eb">Step 4 of 8: statistics</p><h2>Fit a Length Distribution</h2></header>
+  <div class="body cols-43">
+    <div class="stack">
+      <p class="lede">A handful of measured cells becomes a probability distribution. PlantVG draws new cell lengths from it, so every model is different but statistically alike.</p>
+      <span class="seg" id="ftSeg" role="group" aria-label="Distribution"></span>
+      <div class="row"><button class="btn" id="ftDraw" type="button">Draw one length</button><button class="btn ghost" id="ftDraw50" type="button">Draw 50</button><button class="btn ghost" id="ftClear" type="button">Clear draws</button></div>
+      <div class="readout" id="ftOut" aria-live="polite"></div>
+      <p class="small">With only a few cells, several distributions fit about equally well. The choice is prior knowledge, not proof from one slide.</p>
+    </div>
+    <figure><canvas class="plot" id="ftCan" style="aspect-ratio:1.75/1"></canvas><figcaption>Measured lengths (bars), the fitted distribution (line) and your draws (ticks below the axis).</figcaption></figure>
+  </div>
+</section>
+
+<!-- 14 CAPS -->
+<section class="slide" data-key="caps" data-title="Step 5: Place End Caps">
+  <header class="head"><p class="eb">Step 5 of 8: end caps</p><h2>Walk Up Each Cell Column, Dropping End Caps</h2></header>
+  <div class="body" style="grid-template-columns:minmax(0,4fr) minmax(0,6fr) minmax(0,3fr)">
+    <div class="stack">
+      <p class="lede">Each traced cell is a column of stacked cells. The first end cap lands at a random fraction of the average length, so neighbors don't line up. Each next cap is one drawn length further on.</p>
+      <div class="row"><button class="btn" id="cpPlay" type="button">Play</button><button class="btn ghost" id="cpStep" type="button">Next cap</button><button class="btn ghost" id="cpNew" type="button">New draw</button></div>
+      <div class="ctl"><label for="cpLF">Length factor</label><input type="range" id="cpLF" min="0.4" max="2" step="0.05" value="1"><output id="cpLFo"></output></div>
+      <div class="readout" id="cpOut" aria-live="polite"></div>
+    </div>
+    <figure><canvas class="plot" id="cpCan" style="aspect-ratio:1.25/1" aria-label="Cell columns with end caps placed along the stem axis"></canvas><figcaption>Fourteen of the cell columns. The stem axis runs upward; shading shows slices since the last cap.</figcaption></figure>
+    <figure><canvas class="px" id="cpArr" style="aspect-ratio:0.55/1;height:auto" aria-label="End-cap array, one column per cell"></canvas><figcaption>The full end-cap array: one column per traced cell, one row per slice.</figcaption></figure>
+  </div>
+</section>
+
+<!-- 15 FILLETS -->
+<section class="slide" data-key="fillets" data-title="Step 6: Round the Corners">
+  <header class="head"><p class="eb">Step 6 of 8: end-cap fillets</p><h2>Round the Corners Where Caps Meet Walls</h2></header>
+  <div class="body" style="grid-template-columns:minmax(0,4fr) minmax(0,5fr) minmax(0,3fr)">
+    <div class="stack">
+      <p class="lede">Real end caps curve into the side walls. PlantVG builds that curve by eroding two masks slice by slice near each cap: the cell interior shrinks, and the outer wall face pulls in.</p>
+      <div class="panel stack" style="gap:10px">
+        <div class="ctl"><label for="flT">Wall thickness</label><input type="range" id="flT" min="2" max="12" step="1" value="6"><output id="flTo"></output></div>
+        <div class="ctl"><label for="flR">Fillet radius</label><input type="range" id="flR" min="1" max="12" step="1" value="5"><output id="flRo"></output></div>
+      </div>
+      <label class="row" style="font-size:18px"><input type="checkbox" id="flShow" checked> Color the eroded pixels</label>
+      <div class="legend"><span><i style="background:#ece5d3"></i>Side wall</span><span><i style="background:#d6c8a0"></i>End cap</span><span><i style="background:#5aa9ff"></i>Interior eroded: wall grows in</span><span><i style="background:#c0394f"></i>Outer face eroded</span></div>
+      <p class="note">Click inside a column to add or remove an end cap there.</p>
+    </div>
+    <div class="vbox" style="display:flex;align-items:center;justify-content:center"><canvas class="px" id="flCan" style="position:static;width:auto;height:96%;background:transparent;cursor:pointer" aria-label="Longitudinal section through three neighboring cells"></canvas></div>
+    <div class="stack">
+      <div class="readout" id="flOut" aria-live="polite"></div>
+      <p class="note" style="font-size:17px">The rounding starts this many slices from the cap: half the wall thickness plus the radius.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 16 ASSEMBLE -->
+<section class="slide" data-key="assemble" data-title="Step 7: Build the Matrix">
+  <header class="head"><p class="eb">Step 7 of 8: building the matrix</p><h2>Add the Cells One Tube at a Time</h2></header>
+  <div class="body" style="grid-template-columns:minmax(0,4fr) minmax(0,6fr) minmax(0,3fr)">
+    <div class="stack">
+      <p class="lede">Each traced outline grows outward into a wall, runs through every slice, and closes at its own end caps with fillets. All tubes land in one shared voxel array.</p>
+      <div class="ctl"><label for="asN">Cells placed</label><input type="range" id="asN" min="0" max="1" step="1" value="1"><output id="asNo"></output></div>
+      <div class="row"><button class="btn" id="asPlay" type="button">Play</button></div>
+      <div class="ctl"><label for="asCut">Cut height</label><input type="range" id="asCut" min="0.05" max="1" step="0.01" value="1"><output id="asCutO"></output></div>
+      <p class="note">Each color is one traced cell, matching the map on the right.</p>
+    </div>
+    <div class="vbox"><canvas id="asCanvas" aria-label="3D voxel model being assembled cell by cell"></canvas><p class="vtip">Drag to turn. Scroll to zoom.</p><div class="vinfo" id="asInfo"></div><div class="vbusy" id="asBusy">Building model…</div></div>
+    <figure><canvas class="px" id="asMap" aria-label="Transverse map of traced cells, colored once placed"></canvas><figcaption>Transverse map. Placed cells take their color.</figcaption></figure>
+  </div>
+</section>
+
+<!-- 17 STACK -->
+<section class="slide" data-key="stack" data-title="Step 8: Crop, Downsample, Export">
+  <header class="head"><p class="eb">Step 8 of 8: output</p><h2>Crop, Downsample, and Save a TIFF Stack</h2></header>
+  <div class="body" style="grid-template-columns:minmax(0,4fr) minmax(0,4fr) minmax(0,5fr)">
+    <div class="stack">
+      <p class="lede">Extra slices are built at the start and cropped off, because the cap walk hasn't settled there. Edges are trimmed by the wall thickness plus radius. The result saves as a multi-page TIFF that ImageJ and FIJI open directly.</p>
+      <div class="row"><span style="font-size:17px">Downsample</span><span class="seg" id="stSeg" role="group" aria-label="Downsample factor"><button type="button" data-d="1">1 (full)</button><button type="button" data-d="2" aria-pressed="true">2</button><button type="button" data-d="4">4</button></span></div>
+      <div class="readout" id="stOut" aria-live="polite"></div>
+      <p class="note" style="font-size:17px">Each white voxel can become one cube-shaped finite element for stress analysis.</p>
+    </div>
+    <div class="stack">
+      <figure><canvas class="px" id="stSlice" aria-label="One slice of the output stack"></canvas><figcaption id="stSliceCap"></figcaption></figure>
+      <div class="ctl"><label for="stZ">Page in stack</label><input type="range" id="stZ" min="0" max="1" step="1" value="0"><output id="stZo"></output></div>
+    </div>
+    <figure><canvas class="px" id="stLong" aria-label="Longitudinal cut through the stack with the current page marked"></canvas><figcaption>Longitudinal cut through the middle of the stack. The gold line is the page on the left.</figcaption></figure>
+  </div>
+</section>
+
+<!-- 18 TWEAK -->
+<section class="slide" data-key="tweak" data-title="Results: Tweak and Regenerate">
+  <header class="head"><p class="eb">Results</p><h2>Same Two Slides, Endless Variations</h2></header>
+  <div class="body" style="grid-template-columns:minmax(0,4fr) minmax(0,8fr)">
+    <div class="stack" style="gap:12px">
+      <div class="ctl"><label for="twT">Wall thickness</label><input type="range" id="twT" min="3" max="14" step="1" value="9"><output id="twTo"></output></div>
+      <div class="ctl"><label for="twV">Wall variation</label><input type="range" id="twV" min="0" max="4" step="1" value="0"><output id="twVo"></output></div>
+      <div class="ctl"><label for="twR">Fillet radius</label><input type="range" id="twR" min="1" max="10" step="1" value="5"><output id="twRo"></output></div>
+      <div class="ctl"><label for="twL">Length factor</label><input type="range" id="twL" min="0.4" max="2" step="0.05" value="1"><output id="twLo"></output></div>
+      <div class="ctl"><label for="twD">Distribution</label><select class="inp" id="twD"></select><span></span></div>
+      <div class="row"><button class="btn" id="twGen" type="button">New random stem</button></div>
+      <div class="ctl"><label for="twCH">Height cut</label><input type="range" id="twCH" min="0.05" max="1" step="0.01" value="0.75"><output id="twCHo"></output></div>
+      <div class="ctl"><label for="twCX">Side cut</label><input type="range" id="twCX" min="0.05" max="1" step="0.01" value="1"><output id="twCXo"></output></div>
+      <div class="readout" id="twOut" aria-live="polite"></div>
+    </div>
+    <div class="vbox"><canvas id="twCanvas" aria-label="3D voxel model. Drag to rotate."></canvas><p class="vtip">Drag to turn. Scroll to zoom. Burgundy faces are where the cuts pass through walls.</p><div class="vbusy" id="twBusy" hidden>Building model…</div></div>
+  </div>
+</section>
+
+
+<footer class="foot" aria-hidden="true"><span></span><span class="r"><span>Christopher J Stubbs</span><span id="fnum"></span></span></footer>
+</main>
+</div>
+<nav class="bar" aria-label="Slide navigation">
+  <button type="button" id="prev" aria-label="Previous slide">Back</button>
+  <span class="count" id="count" aria-live="polite"></span>
+  <button type="button" id="next" aria-label="Next slide">Next</button>
+  <select id="jump" aria-label="Go to slide"></select>
+  <span class="grow"></span>
+  <span class="kbd">Arrow keys move between slides</span>
+  <button type="button" id="fs">Full screen</button>
+</nav>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+/* PlantVG core, JavaScript port of plantvg_core.py
+   (Stubbs, C.J. & Benzecry, A., Fairleigh Dickinson University). Units: pixels. */
+const PVG = (() => {
+  "use strict";
+
+  // ---------- MATLAB-compatible helpers ----------
+  const mround = (x) => Math.trunc(x + (x < 0 ? -0.5 : 0.5)); // half away from zero
+
+  // ---------- Section 1: binarization ----------
+  function graythresh(u8) {
+    const n = 256, counts = new Float64Array(n);
+    for (let i = 0; i < u8.length; i++) counts[u8[i]]++;
+    let total = 0; for (let i = 0; i < n; i++) total += counts[i];
+    if (total === 0) return 0;
+    const omega = new Float64Array(n), mu = new Float64Array(n);
+    let o = 0, m = 0;
+    for (let i = 0; i < n; i++) {
+      const p = counts[i] / total;
+      o += p; m += p * (i + 1);
+      omega[i] = o; mu[i] = m;
+    }
+    const muT = mu[n - 1], sig = new Float64Array(n);
+    let maxv = -Infinity, any = false;
+    for (let i = 0; i < n; i++) {
+      const v = (muT * omega[i] - mu[i]) ** 2 / (omega[i] * (1 - omega[i]));
+      sig[i] = v;
+      if (!Number.isNaN(v)) { any = true; if (v > maxv) maxv = v; }
+    }
+    if (!any) return 0;
+    let s = 0, c = 0;
+    for (let i = 0; i < n; i++) if (sig[i] === maxv) { s += i; c++; }
+    const idx = s / c + 1;
+    return (idx - 1) / (n - 1);
+  }
+
+  function imbinarize(u8) {
+    const level = graythresh(u8), out = new Uint8Array(u8.length);
+    for (let i = 0; i < u8.length; i++) out[i] = (u8[i] / 255) > level ? 1 : 0;
+    return { bw: out, level };
+  }
+
+  // ---------- Section 2: fill holes, label, trace ----------
+  function fillHoles(bw, H, W) {
+    // background flood from the border, 4-connected (scipy binary_fill_holes default)
+    const reached = new Uint8Array(H * W), stack = [];
+    const push = (r, c) => { const i = r * W + c; if (!bw[i] && !reached[i]) { reached[i] = 1; stack.push(i); } };
+    for (let c = 0; c < W; c++) { push(0, c); push(H - 1, c); }
+    for (let r = 0; r < H; r++) { push(r, 0); push(r, W - 1); }
+    while (stack.length) {
+      const i = stack.pop(), r = (i / W) | 0, c = i - r * W;
+      if (r > 0) push(r - 1, c); if (r < H - 1) push(r + 1, c);
+      if (c > 0) push(r, c - 1); if (c < W - 1) push(r, c + 1);
+    }
+    const out = new Uint8Array(H * W);
+    for (let i = 0; i < out.length; i++) out[i] = bw[i] || !reached[i] ? 1 : 0;
+    return out;
+  }
+
+  // 8-connected labels numbered in column-major first-pixel order (MATLAB bwlabel)
+  function labelColMajor(bw, H, W) {
+    const lab = new Int32Array(H * W), starts = [];
+    let n = 0; const stack = [];
+    for (let c = 0; c < W; c++) for (let r = 0; r < H; r++) {
+      const i0 = r * W + c;
+      if (!bw[i0] || lab[i0]) continue;
+      n++; starts.push([r, c]); lab[i0] = n; stack.push(i0);
+      while (stack.length) {
+        const i = stack.pop(), rr = (i / W) | 0, cc = i - rr * W;
+        for (let dr = -1; dr <= 1; dr++) {
+          const r2 = rr + dr; if (r2 < 0 || r2 >= H) continue;
+          for (let dc = -1; dc <= 1; dc++) {
+            const c2 = cc + dc; if (c2 < 0 || c2 >= W) continue;
+            const j = r2 * W + c2;
+            if (bw[j] && !lab[j]) { lab[j] = n; stack.push(j); }
+          }
+        }
+      }
+    }
+    return { lab, n, starts };
+  }
+
+  const MOORE = [[-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1]];
+  function mooreIdx(dr, dc) {
+    for (let j = 0; j < 8; j++) if (MOORE[j][0] === dr && MOORE[j][1] === dc) return j;
+    throw new Error("boundary trace lost its backtrack pixel");
+  }
+
+  function traceOne(lab, id, H, W, sr, sc) {
+    const solid = (r, c) => r >= 0 && r < H && c >= 0 && c < W && lab[r * W + c] === id;
+    let br = sr, bc = sc - 1, cr = sr, cc = sc;
+    const pts = [[sr, sc]];
+    let first = null;
+    const maxSteps = 4 * H * W;
+    for (let step = 0; step < maxSteps; step++) {
+      const idx = mooreIdx(br - cr, bc - cc);
+      let found = null;
+      for (let k = 1; k <= 8; k++) {
+        const j = (idx + k) % 8, r = cr + MOORE[j][0], c = cc + MOORE[j][1];
+        if (solid(r, c)) {
+          found = [r, c];
+          const p = (idx + k - 1) % 8;
+          br = cr + MOORE[p][0]; bc = cc + MOORE[p][1];
+          break;
+        }
+      }
+      if (!found) break;
+      if (first === null) first = found;
+      else if (cr === sr && cc === sc && found[0] === first[0] && found[1] === first[1]) break;
+      cr = found[0]; cc = found[1];
+      pts.push([cr, cc]);
+      if (pts.length > 2 && cr === sr && cc === sc) {
+        const ni = mooreIdx(br - cr, bc - cc);
+        for (let k = 1; k <= 8; k++) {
+          const j = (ni + k) % 8, r = cr + MOORE[j][0], c = cc + MOORE[j][1];
+          if (solid(r, c)) {
+            if (r === first[0] && c === first[1]) { pts.pop(); pts.push([sr, sc]); return pts; }
+            break;
+          }
+        }
+      }
+    }
+    const a = pts[0], b = pts[pts.length - 1];
+    if (a[0] !== b[0] || a[1] !== b[1]) pts.push([a[0], a[1]]);
+    return pts;
+  }
+
+  function bwboundaries(bw, H, W) {
+    const { lab, n, starts } = labelColMajor(bw, H, W), out = [];
+    for (let id = 1; id <= n; id++) out.push(traceOne(lab, id, H, W, starts[id - 1][0], starts[id - 1][1]));
+    return out;
+  }
+
+  // ---------- geometry ----------
+  // MATLAB-compatible poly2mask (x_rule "left"), restricted to a row/col window for speed.
+  // Returns {r0, c0, h, w, m} where m is a Uint8Array window of the full-image mask.
+  function poly2maskWindow(pts, H, W) {
+    let r = pts.map((p) => p[0]), c = pts.map((p) => p[1]);
+    if (r[0] !== r[r.length - 1] || c[0] !== c[c.length - 1]) { r.push(r[0]); c.push(c[0]); }
+    const E = [];
+    for (let i = 0; i < r.length - 1; i++) {
+      if (r[i] === r[i + 1]) continue;
+      E.push([r[i], r[i + 1], c[i], c[i + 1], Math.min(r[i], r[i + 1]), Math.max(r[i], r[i + 1])]);
+    }
+    let minR = Infinity, maxR = -Infinity;
+    for (const v of r) { if (v < minR) minR = v; if (v > maxR) maxR = v; }
+    const y0 = Math.max(0, Math.floor(minR)), y1 = Math.min(H - 1, Math.ceil(maxR));
+    let minC = Infinity, maxC = -Infinity;
+    for (const v of c) { if (v < minC) minC = v; if (v > maxC) maxC = v; }
+    const x0 = Math.max(0, Math.floor(minC)), x1 = Math.min(W - 1, Math.ceil(maxC));
+    const h = Math.max(0, y1 - y0 + 1), w = Math.max(0, x1 - x0 + 1);
+    const m = new Uint8Array(h * w);
+    if (!E.length) return { r0: y0, c0: x0, h, w, m };
+    const xs = [];
+    for (let y = y0; y <= y1; y++) {
+      xs.length = 0;
+      for (const e of E) {
+        if (e[4] < y && y <= e[5]) xs.push(e[2] + (y - e[0]) * ((e[3] - e[2]) / (e[1] - e[0])));
+      }
+      xs.sort((a, b) => a - b);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const a = xs[k], b = xs[k + 1];
+        const s = Math.max(0, Math.ceil(a)), t = Math.min(W - 1, Math.ceil(b) - 1);
+        for (let px = s; px <= t; px++) if (px >= x0 && px <= x1) m[(y - y0) * w + (px - x0)] = 1;
+      }
+    }
+    return { r0: y0, c0: x0, h, w, m };
+  }
+
+  // Section 3: cell lengths
+  function cellHeights(bounds, imageH) {
+    const heights = [], counted = new Array(bounds.length).fill(false);
+    bounds.forEach((b, i) => {
+      let mn = Infinity, mx = -Infinity;
+      for (const p of b) { if (p[0] < mn) mn = p[0]; if (p[0] > mx) mx = p[0]; }
+      if (mx < imageH - 1 && mn > 0) { heights.push(mx - mn); counted[i] = true; }
+    });
+    return { heights, counted };
+  }
+
+  const mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+  const std1 = (a) => { if (a.length < 2) return 0; const m = mean(a); return Math.sqrt(a.reduce((s, v) => s + (v - m) ** 2, 0) / (a.length - 1)); };
+
+  function filterHeights(heights, lower, upper, lengthFactor) {
+    const scaled = heights.map((h) => lengthFactor * h);
+    const kept = scaled.filter((v) => (lower == null || v > lower) && (upper == null || v < upper));
+    if (!kept.length) {
+      const lo = lower == null ? "-inf" : lower.toFixed(1), hi = upper == null ? "+inf" : upper.toFixed(1);
+      throw new Error(`The cell length range you chose (${lo} to ${hi} pixels) excludes every cell. ` +
+        `The measured lengths run from ${Math.min(...scaled).toFixed(1)} to ${Math.max(...scaled).toFixed(1)} pixels. Widen the range to cover some of that.`);
+    }
+    return { height: kept, avg: mean(kept), std: std1(kept) };
+  }
+
+  // ---------- random numbers (seedable) ----------
+  function makeRng(seed) {
+    // splitmix32 -> xoshiro128**
+    let s = seed >>> 0;
+    const sm = () => { s = (s + 0x9e3779b9) >>> 0; let z = s; z = Math.imul(z ^ (z >>> 16), 0x85ebca6b); z = Math.imul(z ^ (z >>> 13), 0xc2b2ae35); return (z ^ (z >>> 16)) >>> 0; };
+    let a = sm(), b = sm(), c = sm(), d = sm();
+    const u32 = () => {
+      const r = Math.imul(((Math.imul(b, 5) << 7) | (Math.imul(b, 5) >>> 25)), 9) >>> 0;
+      const t = b << 9;
+      c ^= a; d ^= b; b ^= c; a ^= d; c ^= t; d = (d << 11) | (d >>> 21);
+      return r;
+    };
+    const random = () => ((u32() >>> 5) * 67108864 + (u32() >>> 6)) / 9007199254740992;
+    let spare = null;
+    const normal01 = () => {
+      if (spare !== null) { const v = spare; spare = null; return v; }
+      let u, v, q;
+      do { u = 2 * random() - 1; v = 2 * random() - 1; q = u * u + v * v; } while (q >= 1 || q === 0);
+      const f = Math.sqrt(-2 * Math.log(q) / q); spare = v * f; return u * f;
+    };
+    const exp1 = () => -Math.log(1 - random());
+    const stdGamma = (k) => {
+      if (k <= 0) return 0;
+      if (k < 1) return stdGamma(1 + k) * Math.pow(random(), 1 / k);
+      const dd = k - 1 / 3, cc = 1 / Math.sqrt(9 * dd);
+      for (;;) {
+        let x, v; do { x = normal01(); v = 1 + cc * x; } while (v <= 0);
+        v = v * v * v; const u = random();
+        if (u < 1 - 0.0331 * x ** 4 || Math.log(u) < 0.5 * x * x + dd * (1 - v + Math.log(v))) return dd * v;
+      }
+    };
+    const logFact = (k) => { let s = 0; for (let i = 2; i <= k; i++) s += Math.log(i); return s; };
+    const poisson = (lam) => {
+      if (lam <= 0) return 0;
+      if (lam < 30) { const L = Math.exp(-lam); let k = 0, p = 1; do { k++; p *= random(); } while (p > L); return k - 1; }
+      // PTRS (Hormann 1993)
+      const slam = Math.sqrt(lam), loglam = Math.log(lam), b = 0.931 + 2.53 * slam, a = -0.059 + 0.02483 * b;
+      const invalpha = 1.1239 + 1.1328 / (b - 3.4), vr = 0.9277 - 3.6224 / (b - 2);
+      for (;;) {
+        const U = random() - 0.5, V = random(), us = 0.5 - Math.abs(U);
+        const k = Math.floor((2 * a / us + b) * U + lam + 0.43);
+        if (us >= 0.07 && V <= vr) return k;
+        if (k < 0 || (us < 0.013 && V > us)) continue;
+        if (Math.log(V) + Math.log(invalpha) - Math.log(a / (us * us) + b) <= -lam + k * loglam - lgamma(k + 1)) return k;
+      }
+    };
+    return { random, normal: (m, s) => m + s * normal01(), exponential: (mu) => mu * exp1(), gamma: (a, b) => b * stdGamma(a), poisson, weibull: (a, b) => a * Math.pow(exp1(), 1 / b) };
+  }
+
+  function lgamma(x) {
+    const g = 7, C = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+    if (x < 0.5) return Math.log(Math.PI / Math.abs(Math.sin(Math.PI * x))) - lgamma(1 - x);
+    x -= 1; let a = C[0]; const t = x + g + 0.5;
+    for (let i = 1; i < g + 2; i++) a += C[i] / (x + i);
+    return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+  }
+  function digamma(x) { let r = 0; while (x < 6) { r -= 1 / x; x += 1; } const f = 1 / (x * x); return r + Math.log(x) - 0.5 / x - f * (1 / 12 - f * (1 / 120 - f * (1 / 252 - f * (1 / 240 - f / 132)))); }
+  function trigamma(x) { let r = 0; while (x < 6) { r += 1 / (x * x); x += 1; } const f = 1 / (x * x); return r + 1 / x + f / 2 + f / x * (1 / 6 - f * (1 / 30 - f * (1 / 42 - f / 30))); }
+
+  const DISTRIBUTIONS = ["Normal", "Exponential", "Gamma", "Poisson", "Weibull"];
+
+  // Port of fitdist; params in MATLAB's order.
+  function fitDistribution(x, name) {
+    if (!x.length) throw new Error("cannot fit a distribution to an empty height vector");
+    const key = name.trim().toLowerCase();
+    if (key === "normal") { const mu = mean(x), s = std1(x); return { name: "Normal", params: [mu, s], sample: (g) => g.normal(mu, s) }; }
+    if (key === "exponential") { const mu = mean(x); return { name: "Exponential", params: [mu], sample: (g) => g.exponential(mu) }; }
+    if (key === "gamma") {
+      if (x.some((v) => v <= 0)) throw new Error("The Gamma distribution needs every cell length to be above zero. Raise the lower end of the length range to drop the zero-length cells, or choose Normal.");
+      const m = mean(x), sl = Math.log(m) - mean(x.map(Math.log));
+      let a = sl > 0 ? (3 - sl + Math.sqrt((sl - 3) ** 2 + 24 * sl)) / (12 * sl) : 1e6;
+      for (let i = 0; i < 100 && Number.isFinite(a) && sl > 0; i++) {
+        const f = Math.log(a) - digamma(a) - sl, d = 1 / a - trigamma(a), na = a - f / d;
+        a = na > 0 ? na : a / 2; if (Math.abs(f) < 1e-14) break;
+      }
+      const b = m / a; return { name: "Gamma", params: [a, b], sample: (g) => g.gamma(a, b) };
+    }
+    if (key === "poisson") {
+      if (x.some((v) => v < 0 || v !== Math.floor(v))) throw new Error("The Poisson distribution only works with whole-number cell lengths, but the cell length factor has made them fractional. Set the cell length factor to a whole number (1, 2, 3...), or choose a different distribution. Normal and Gamma both handle fractional lengths.");
+      const lam = mean(x); return { name: "Poisson", params: [lam], sample: (g) => g.poisson(lam) };
+    }
+    if (key === "weibull") {
+      if (x.some((v) => v <= 0)) throw new Error("The Weibull distribution needs every cell length to be above zero. Raise the lower end of the length range to drop the zero-length cells, or choose Normal.");
+      const lx = x.map(Math.log), mlx = mean(lx);
+      const f = (k) => { let s0 = 0, s1 = 0; const mx = Math.max(...lx); for (let i = 0; i < x.length; i++) { const w = Math.exp(k * (lx[i] - mx)); s0 += w; s1 += w * lx[i]; } return s1 / s0 - 1 / k - mlx; };
+      let lo = 1e-3, hi = 1; while (f(hi) < 0 && hi < 1e4) hi *= 2;
+      for (let i = 0; i < 200; i++) { const md = (lo + hi) / 2; if (f(md) < 0) lo = md; else hi = md; }
+      const k = (lo + hi) / 2, mx = Math.max(...lx);
+      const scale = Math.exp(mx) * Math.pow(mean(lx.map((v) => Math.exp(k * (v - mx)))), 1 / k);
+      return { name: "Weibull", params: [scale, k], sample: (g) => g.weibull(scale, k) };
+    }
+    throw new Error(`unknown distribution ${name}`);
+  }
+  const stepSize = (fitted, g) => Math.max(1, mround(fitted.sample(g)));
+
+  // ---------- Section 5: end caps ----------
+  function generateEndCaps(nCells, depth, fitted, avg, g) {
+    const caps = [];
+    for (let i = 0; i < nCells; i++) {
+      const v = new Uint8Array(depth);
+      let pos = mround(g.random() * avg);
+      while (pos <= depth) { if (pos >= 1) v[pos - 1] = 1; pos += stepSize(fitted, g); }
+      caps.push(v);
+    }
+    return caps;
+  }
+
+  // ---------- Section 6: fillet profiles ----------
+  function filletArrays(cap, radius, wt) {
+    const depth = cap.length, subI = new Float64Array(depth), subO = new Float64Array(depth), fill = new Uint8Array(depth);
+    const thk = mround(wt / 2), ri = radius | 0, ro = ri + thk;
+    for (let k = 1; k <= depth; k++) {
+      if (!cap[k - 1]) continue;
+      for (let j = 1; j <= ri; j++) {
+        if (k - thk - ri + j > 0 && k + thk + ri - j < depth + 1) {
+          const v = Math.sin(j * Math.PI / 2 / ri) * ri;
+          subI[k - thk - ri + j - 1] = v; subI[k + thk + ri - j - 1] = v;
+        }
+      }
+      if (k - thk > 0 && k + thk < depth + 1) for (let q = k - thk - 1; q < k + thk; q++) subI[q] = ri;
+      for (let j = 1; j <= ri + thk; j++) {
+        if (k - thk - ri + j > 0 && k + thk + ri - j < depth + 1) {
+          const v = Math.sin(j * Math.PI / 2 / (ri + wt)) * (ri + thk);
+          subO[k - ro + j - 1] = v; subO[k + ro - j - 1] = v;
+        }
+      }
+      if (k - thk > 0 && k + thk < depth + 1) for (let q = k - thk - 1; q < k + thk; q++) fill[q] = 1;
+    }
+    return { subI, subO, fill };
+  }
+
+  // city-block distance transform (scipy distance_transform_cdt, taxicab); -1 everywhere if no background
+  function cdtTaxicab(mask, h, w) {
+    const BIG = 1 << 29, d = new Int32Array(h * w);
+    let anyBg = false;
+    for (let i = 0; i < d.length; i++) { if (mask[i]) d[i] = BIG; else { d[i] = 0; anyBg = true; } }
+    if (!anyBg) { d.fill(-1); return d; }
+    for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
+      const i = r * w + c; let v = d[i]; if (!v) continue;
+      if (r > 0 && d[i - w] + 1 < v) v = d[i - w] + 1;
+      if (c > 0 && d[i - 1] + 1 < v) v = d[i - 1] + 1;
+      d[i] = v;
+    }
+    for (let r = h - 1; r >= 0; r--) for (let c = w - 1; c >= 0; c--) {
+      const i = r * w + c; let v = d[i]; if (!v) continue;
+      if (r < h - 1 && d[i + w] + 1 < v) v = d[i + w] + 1;
+      if (c < w - 1 && d[i + 1] + 1 < v) v = d[i + 1] + 1;
+      d[i] = v;
+    }
+    return d;
+  }
+
+  // ---------- Parameters ----------
+  function derive(p, H, W) {
+    const buffer = Math.ceil(2 * p.radius + p.wall_thickness);
+    const working = Math.ceil(p.voxel_depth) + buffer;
+    const sb = Math.ceil(p.radius + p.wall_thickness);
+    const n = (a, b) => Math.max(0, Math.ceil((b - (a - 1)) / p.dsf));
+    return { buffer, working, sb, shape: [n(buffer, working), n(sb, H - sb), n(sb, W - sb)] };
+  }
+  function validate(p) {
+    const e = [];
+    if (!(p.voxel_depth >= 1)) e.push("Voxel depth must be at least 1 slice.");
+    if (!(p.wall_thickness >= 1)) e.push("Wall thickness must be at least 1 pixel.");
+    if (!(p.radius >= 1)) e.push("End cap radius must be at least 1 pixel.");
+    if (!(p.dsf >= 1)) e.push("Downsample factor must be at least 1.");
+    if (!(p.n_models >= 1)) e.push("Number of models must be at least 1.");
+    if (!(p.wall_variation >= 0)) e.push("Wall variation can't be negative.");
+    if (!(p.length_factor > 0)) e.push("Length factor must be above zero.");
+    if (!DISTRIBUTIONS.includes(p.distribution)) e.push("Pick a distribution.");
+    return e;
+  }
+
+  // ---------- Section 6+7: voxel matrix, computed straight into the cropped, downsampled output ----------
+  // Identical to build_voxel_matrix followed by crop_and_downsample, but only evaluates the
+  // voxels that survive the crop, so large images don't need the full working volume in memory.
+  async function buildModel(bounds, caps, H, W, p, g, onCell) {
+    const D = derive(p, H, W), [oD, oH, oW] = D.shape, dsf = p.dsf;
+    const vol = new Uint8Array(oD * oH * oW);
+    const ks = []; for (let k = D.buffer - 1; k < D.working; k += dsf) ks.push(k);
+    const rowStart = D.sb - 1, colStart = D.sb - 1;
+    const diskCache = {};
+    const disk = (rad) => {
+      if (diskCache[rad]) return diskCache[rad];
+      const o = []; for (let dr = -rad; dr <= rad; dr++) for (let dc = -rad; dc <= rad; dc++) if (dr * dr + dc * dc <= rad * rad) o.push(dr, dc);
+      return (diskCache[rad] = o);
+    };
+    for (let i = 0; i < bounds.length; i++) {
+      const b = bounds[i];
+      if (b.length <= 4) { if (onCell) await onCell(i, bounds.length); continue; }
+      const variation = mround(g.random() * 2 * p.wall_variation - p.wall_variation);
+      const cwt = Math.max(1, p.wall_thickness + variation);
+      // outer = disk dilation of boundary pixels | inner, evaluated in a padded window
+      let mnr = Infinity, mxr = -Infinity, mnc = Infinity, mxc = -Infinity;
+      for (const q of b) { if (q[0] < mnr) mnr = q[0]; if (q[0] > mxr) mxr = q[0]; if (q[1] < mnc) mnc = q[1]; if (q[1] > mxc) mxc = q[1]; }
+      const R0 = Math.max(0, mnr - cwt - 2), R1 = Math.min(H - 1, mxr + cwt + 2), C0 = Math.max(0, mnc - cwt - 2), C1 = Math.min(W - 1, mxc + cwt + 2);
+      const wh = R1 - R0 + 1, ww = C1 - C0 + 1;
+      const inner = new Uint8Array(wh * ww), outer = new Uint8Array(wh * ww);
+      const pm = poly2maskWindow(b, H, W);
+      for (let r = 0; r < pm.h; r++) for (let c = 0; c < pm.w; c++) if (pm.m[r * pm.w + c]) {
+        const rr = pm.r0 + r - R0, cc = pm.c0 + c - C0;
+        if (rr >= 0 && rr < wh && cc >= 0 && cc < ww) { inner[rr * ww + cc] = 1; outer[rr * ww + cc] = 1; }
+      }
+      const dk = disk(cwt);
+      for (const q of b) {
+        for (let t = 0; t < dk.length; t += 2) {
+          const rr = q[0] + dk[t], cc = q[1] + dk[t + 1];
+          if (rr < 0 || rr >= H || cc < 0 || cc >= W) continue;
+          outer[(rr - R0) * ww + (cc - C0)] = 1;
+        }
+      }
+      // bbox of outer, padded by one, clipped to the image
+      let br0 = Infinity, br1 = -1, bc0 = Infinity, bc1 = -1;
+      for (let r = 0; r < wh; r++) for (let c = 0; c < ww; c++) if (outer[r * ww + c]) {
+        if (r < br0) br0 = r; if (r > br1) br1 = r; if (c < bc0) bc0 = c; if (c > bc1) bc1 = c;
+      }
+      if (br1 < 0) { if (onCell) await onCell(i, bounds.length); continue; }
+      const r0 = Math.max(0, br0 + R0 - 1), r1 = Math.min(H, br1 + R0 + 2), c0 = Math.max(0, bc0 + C0 - 1), c1 = Math.min(W, bc1 + C0 + 2);
+      const ch = r1 - r0, cw = c1 - c0;
+      const oc = new Uint8Array(ch * cw), ic = new Uint8Array(ch * cw);
+      for (let r = 0; r < ch; r++) for (let c = 0; c < cw; c++) {
+        const wr = r + r0 - R0, wc = c + c0 - C0;
+        if (wr >= 0 && wr < wh && wc >= 0 && wc < ww) { oc[r * cw + c] = outer[wr * ww + wc]; ic[r * cw + c] = inner[wr * ww + wc]; }
+      }
+      const dOut = cdtTaxicab(oc, ch, cw), dIn = cdtTaxicab(ic, ch, cw);
+      const { subI, subO, fill } = filletArrays(caps[i], p.radius, cwt);
+      // output-grid rows/cols that fall inside this crop
+      const gr = [], gc = [];
+      for (let r = rowStart; r < H - D.sb; r += dsf) if (r >= r0 && r < r1) gr.push(r);
+      for (let c = colStart; c < W - D.sb; c += dsf) if (c >= c0 && c < c1) gc.push(c);
+      if (gr.length && gc.length) {
+        const cache = new Map();
+        for (let oz = 0; oz < ks.length; oz++) {
+          const k = ks[oz], nO = Math.floor(subO[k]), nI = Math.floor(subI[k]), f = fill[k];
+          const key = nO * 1e6 + nI * 2 + f;
+          let layer = cache.get(key);
+          if (!layer) {
+            layer = [];
+            for (const r of gr) for (const c of gc) {
+              const li = (r - r0) * cw + (c - c0);
+              let v = dOut[li] > nO; if (v && !f) v = !(dIn[li] > nI);
+              if (v) layer.push(((r - rowStart) / dsf) * oW + (c - colStart) / dsf);
+            }
+            cache.set(key, layer);
+          }
+          const base = oz * oH * oW;
+          for (let t = 0; t < layer.length; t++) vol[base + layer[t]] = 255;
+        }
+      }
+      if (onCell) await onCell(i, bounds.length);
+    }
+    return { vol, shape: D.shape };
+  }
+
+  // ---------- TIFF writer (multi-page, uint8, minisblack, uncompressed) ----------
+  function writeTiff(vol, shape) {
+    const [d, h, w] = shape, page = h * w, nTags = 10, ifdSize = 2 + nTags * 12 + 4;
+    const desc = new TextEncoder().encode(`ImageJ=1.11a\nimages=${d}\nslices=${d}\nloop=false\n\0`);
+    const descOff = 8, dataOff = descOff + desc.length + (desc.length & 1);
+    const ifdBase = dataOff + d * page;
+    const buf = new ArrayBuffer(ifdBase + d * ifdSize + 1), dv = new DataView(buf), u8 = new Uint8Array(buf);
+    u8[0] = 0x49; u8[1] = 0x49; dv.setUint16(2, 42, true); dv.setUint32(4, ifdBase, true);
+    u8.set(desc, descOff); u8.set(vol, dataOff);
+    for (let z = 0; z < d; z++) {
+      let o = ifdBase + z * ifdSize; dv.setUint16(o, nTags, true); o += 2;
+      const tag = (t, type, cnt, val) => { dv.setUint16(o, t, true); dv.setUint16(o + 2, type, true); dv.setUint32(o + 4, cnt, true); if (type === 3 && cnt === 1) dv.setUint16(o + 8, val, true); else dv.setUint32(o + 8, val, true); o += 12; };
+      tag(254, 4, 1, 0); tag(256, 4, 1, w); tag(257, 4, 1, h); tag(258, 3, 1, 8); tag(259, 3, 1, 1); tag(262, 3, 1, 1);
+      if (z === 0) tag(270, 2, desc.length, descOff); else tag(284, 3, 1, 1);
+      tag(273, 4, 1, dataOff + z * page); tag(278, 4, 1, h); tag(279, 4, 1, page);
+      dv.setUint32(o, z < d - 1 ? ifdBase + (z + 1) * ifdSize : 0, true);
+    }
+    return new Uint8Array(buf, 0, ifdBase + d * ifdSize);
+  }
+
+  // ---------- ZIP writer (stored) ----------
+  const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  const crc32 = (u8) => { let c = 0xffffffff; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  function zip(files) {
+    const enc = new TextEncoder(), parts = [], central = []; let off = 0;
+    for (const f of files) {
+      const name = enc.encode(f.name), crc = crc32(f.data), sz = f.data.length;
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+      lh.setUint32(14, crc, true); lh.setUint32(18, sz, true); lh.setUint32(22, sz, true); lh.setUint16(26, name.length, true);
+      parts.push(new Uint8Array(lh.buffer), name, f.data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+      ch.setUint32(16, crc, true); ch.setUint32(20, sz, true); ch.setUint32(24, sz, true); ch.setUint16(28, name.length, true); ch.setUint32(42, off, true);
+      central.push(new Uint8Array(ch.buffer), name);
+      off += 30 + name.length + sz;
+    }
+    const cdSize = central.reduce((s, a) => s + a.length, 0), end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+    end.setUint32(12, cdSize, true); end.setUint32(16, off, true);
+    return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: "application/zip" });
+  }
+
+  return { graythresh, imbinarize, fillHoles, bwboundaries, poly2maskWindow, cellHeights, filterHeights, makeRng, fitDistribution, generateEndCaps, filletArrays, cdtTaxicab, derive, validate, buildModel, writeTiff, zip, crc32, DISTRIBUTIONS, mround };
+})();
+
+
+</script>
+<script>
+const EXAMPLE = { t: ["CT - Trans.jpg", "image/png", "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"], l: ["CT - Long.jpg", "image/jpeg", "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"] };
+</script>
+<script>
+"use strict";
+/* ============ helpers ============ */
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const cssv = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const ST = { scale: 1, flow: false };
+const sleep = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rseed = () => crypto.getRandomValues(new Uint32Array(1))[0] % 1000000;
+const fmt = (v, d = 1) => Number(v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+function hsl2rgb(h, s, l) {
+  const k = (n) => (n + h * 12) % 12, a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return [f(0), f(8), f(4)];
+}
+const hueRGB = (i) => hsl2rgb((i * 0.381966 + 0.05) % 1, 0.62, 0.6);
+const rgbStr = (a, al = 1) => `rgba(${a.map((v) => Math.round(v * 255)).join(",")},${al})`;
+
+function ctx(c, w, h) {
+  const d = Math.min(3, (window.devicePixelRatio || 1) * Math.max(1, ST.scale));
+  c.width = Math.round(w * d); c.height = Math.round(h * d);
+  const g = c.getContext("2d"); g.setTransform(d, 0, 0, d, 0, 0); return g;
+}
+function evPos(e, c, w, h) { const r = c.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * w, ((e.clientY - r.top) / r.height) * h]; }
+// draw a binary/RGBA image into a canvas at integer upscale k; returns ctx in image-pixel units
+function imgCanvas(c, W, H, k, pix) {
+  c.width = W * k; c.height = H * k;
+  const off = document.createElement("canvas"); off.width = W; off.height = H;
+  const og = off.getContext("2d"), id = og.createImageData(W, H);
+  for (let i = 0; i < W * H; i++) { const p = pix(i); id.data[i * 4] = p[0]; id.data[i * 4 + 1] = p[1]; id.data[i * 4 + 2] = p[2]; id.data[i * 4 + 3] = p[3] ?? 255; }
+  og.putImageData(id, 0, 0);
+  const g = c.getContext("2d"); g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = false; g.drawImage(off, 0, 0, W * k, H * k);
+  g.setTransform(k, 0, 0, k, 0, 0); return g;
+}
+function niceTicks(a, b, n) {
+  const raw = (b - a) / n, m = Math.pow(10, Math.floor(Math.log10(raw || 1))), st = [1, 2, 5, 10].map((q) => q * m).find((q) => q >= raw) || m;
+  const out = []; for (let v = Math.ceil(a / st) * st; v <= b + 1e-9; v += st) out.push(+v.toFixed(10)); return out;
+}
+function axes(g, W, H, x0, x1, y0, y1, o = {}) {
+  const L = o.L ?? 58, R = o.R ?? 14, T = o.T ?? 14, B = o.B ?? 46, pw = W - L - R, ph = H - T - B;
+  const X = (v) => L + ((v - x0) / (x1 - x0)) * pw, Y = (v) => T + ph - ((v - y0) / (y1 - y0)) * ph;
+  g.font = `${o.fs || 14}px Rubik, Arial, sans-serif`; g.fillStyle = cssv("--cap"); g.strokeStyle = cssv("--line"); g.lineWidth = 1;
+  g.beginPath(); g.moveTo(L, T); g.lineTo(L, T + ph); g.lineTo(L + pw, T + ph); g.stroke();
+  g.textAlign = "center"; g.textBaseline = "top";
+  if (!o.noXt) for (const t of niceTicks(x0, x1, o.nx || 6)) g.fillText(String(+t.toPrecision(5)), X(t), T + ph + 6);
+  g.textAlign = "right"; g.textBaseline = "middle";
+  if (!o.noYt) for (const t of niceTicks(y0, y1, o.ny || 4)) g.fillText(String(+t.toPrecision(4)), L - 7, Y(t));
+  g.fillStyle = cssv("--ink"); g.textAlign = "center"; g.textBaseline = "alphabetic";
+  if (o.xl) g.fillText(o.xl, L + pw / 2, H - 6);
+  if (o.yl) { g.save(); g.translate(15, T + ph / 2); g.rotate(-Math.PI / 2); g.fillText(o.yl, 0, 0); g.restore(); }
+  return { X, Y, L, T, pw, ph };
+}
+function bins(v, n, lo, hi) {
+  const counts = new Array(n).fill(0), w = (hi - lo) / n;
+  for (const x of v) { if (x < lo || x > hi) continue; let k = Math.floor((x - lo) / w); if (k >= n) k = n - 1; counts[k]++; }
+  return { counts, lo, hi, w };
+}
+
+/* ============ data ============ */
+const D = {};
+async function decode([name, type, b64]) {
+  const bin = atob(b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  const bmp = await createImageBitmap(new Blob([u8], { type }), { colorSpaceConversion: "none", premultiplyAlpha: "none" });
+  const c = document.createElement("canvas"); c.width = bmp.width; c.height = bmp.height;
+  const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(bmp, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height).data, red = new Uint8Array(c.width * c.height);
+  for (let i = 0; i < red.length; i++) red[i] = d[i * 4];
+  return { red, W: c.width, H: c.height, name };
+}
+function prep(img) {
+  const bw = PVG.imbinarize(img.red).bw, mask = PVG.fillHoles(bw, img.H, img.W);
+  const bounds = PVG.bwboundaries(mask, img.H, img.W), lab = new Int16Array(img.W * img.H), area = new Array(bounds.length).fill(0);
+  bounds.forEach((b, i) => {
+    const m = PVG.poly2maskWindow(b, img.H, img.W);
+    for (let r = 0; r < m.h; r++) for (let c = 0; c < m.w; c++) if (m.m[r * m.w + c]) lab[(m.r0 + r) * img.W + m.c0 + c] = i + 1;
+    for (const p of b) lab[p[0] * img.W + p[1]] = i + 1;
+  });
+  for (const v of lab) if (v) area[v - 1]++;
+  return { ...img, bw, mask, bounds, lab, area };
+}
+const FIT = { filter: [30, 260], dist: "Normal" };
+function currentFit(lf = 1, dist = FIT.dist) {
+  const f = PVG.filterHeights(D.heights, FIT.filter[0] * lf, FIT.filter[1] * lf, lf);
+  return { ...f, fitted: PVG.fitDistribution(f.height, dist) };
+}
+const BASE_P = { voxel_depth: 256, wall_thickness: 9, wall_variation: 0, radius: 5, length_factor: 1, dsf: 2, n_models: 1, distribution: "Normal" };
+async function makeModel(p, seed, opt = {}) {
+  const T = D.T, fit = currentFit(p.length_factor, p.distribution);
+  const g = PVG.makeRng(seed), Dv = PVG.derive(p, T.H, T.W);
+  const caps = PVG.generateEndCaps(T.bounds.length, Dv.working, fit.fitted, fit.avg, g);
+  let vol, owner = null;
+  if (!opt.owner) { vol = (await PVG.buildModel(T.bounds, caps, T.H, T.W, p, g)).vol; }
+  else {
+    const [a, b, c] = Dv.shape, n = a * b * c; vol = new Uint8Array(n); owner = new Uint8Array(n);
+    for (let i = 0; i < T.bounds.length; i++) {
+      const v = (await PVG.buildModel([T.bounds[i]], [caps[i]], T.H, T.W, p, g)).vol, o = Math.min(255, i + 1);
+      for (let j = 0; j < n; j++) if (v[j]) { vol[j] = 255; if (!owner[j]) owner[j] = o; }
+      if (i % 8 === 7) await sleep(0);
+    }
+  }
+  let solid = 0; for (let j = 0; j < vol.length; j++) if (vol[j]) solid++;
+  return { vol, owner, shape: Dv.shape, caps, seed, p, derive: Dv, fit, solid: solid / vol.length };
+}
+
+/* ============ voxel mesher ============ */
+// three.js axes: X = image column, Y = slice (stem axis, up), Z = image row
+const FACES = [
+  { d: [-1, 0, 0], n: [-1, 0, 0], c: [[0, 1, 0], [0, 0, 0], [0, 1, 1], [0, 0, 1]] },
+  { d: [1, 0, 0], n: [1, 0, 0], c: [[1, 1, 1], [1, 0, 1], [1, 1, 0], [1, 0, 0]] },
+  { d: [0, -1, 0], n: [0, -1, 0], c: [[1, 0, 1], [0, 0, 1], [1, 0, 0], [0, 0, 0]] },
+  { d: [0, 1, 0], n: [0, 1, 0], c: [[0, 1, 1], [1, 1, 1], [0, 1, 0], [1, 1, 0]] },
+  { d: [0, 0, -1], n: [0, 0, -1], c: [[1, 0, 0], [0, 0, 0], [1, 1, 0], [0, 1, 0]] },
+  { d: [0, 0, 1], n: [0, 0, 1], c: [[0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]] },
+];
+const poolCache = new WeakMap();
+function pooled(M, s) {
+  let byS = poolCache.get(M); if (!byS) poolCache.set(M, (byS = {}));
+  if (byS[s]) return byS[s];
+  const [Dd, Hh, Ww] = M.shape, nx = Math.ceil(Ww / s), ny = Math.ceil(Dd / s), nz = Math.ceil(Hh / s), occ = new Uint8Array(nx * ny * nz);
+  for (let z = 0; z < Dd; z++) { const oy = ((z / s) | 0) * nz * nx; for (let r = 0; r < Hh; r++) { const oz = oy + ((r / s) | 0) * nx, base = z * Hh * Ww + r * Ww; for (let c = 0; c < Ww; c++) { const j = base + c; if (M.vol[j]) { const q = oz + ((c / s) | 0); if (!occ[q]) occ[q] = M.owner ? M.owner[j] || 1 : 1; } } } }
+  return (byS[s] = { occ, nx, ny, nz, s });
+}
+const BONE = [0.925, 0.898, 0.827], CUT = [0.62, 0.13, 0.21];
+function meshModel(M, o = {}) {
+  const s = o.s || 1, P = pooled(M, s), { occ, nx, ny, nz } = P, [Dd, Hh, Ww] = M.shape;
+  const maxO = o.maxOwner ?? 255, cy = Math.ceil((o.cutY ?? 1) * ny), cx = Math.ceil((o.cutX ?? 1) * nx);
+  const st = (x, y, z) => { if (x < 0 || y < 0 || z < 0 || x >= nx || y >= ny || z >= nz) return 0; const v = occ[(y * nz + z) * nx + x]; if (!v) return 0; if (v > maxO) return 2; if (y >= cy || x >= cx) return 3; return 1; };
+  let nf = 0;
+  for (let y = 0; y < Math.min(ny, cy); y++) for (let z = 0; z < nz; z++) for (let x = 0; x < Math.min(nx, cx); x++) {
+    if (st(x, y, z) !== 1) continue; for (const F of FACES) if (st(x + F.d[0], y + F.d[1], z + F.d[2]) !== 1) nf++;
+  }
+  const pos = new Float32Array(nf * 12), nor = new Float32Array(nf * 12), col = new Float32Array(nf * 12), idx = new Uint32Array(nf * 6);
+  const ox = Ww / 2, oy = Dd / 2, oz = Hh / 2, pal = {};
+  let f = 0;
+  for (let y = 0; y < Math.min(ny, cy); y++) for (let z = 0; z < nz; z++) for (let x = 0; x < Math.min(nx, cx); x++) {
+    if (st(x, y, z) !== 1) continue;
+    const v = occ[(y * nz + z) * nx + x];
+    const base = o.color === "owner" ? (pal[v] || (pal[v] = hueRGB(v - 1))) : BONE;
+    for (const F of FACES) {
+      const nb = st(x + F.d[0], y + F.d[1], z + F.d[2]); if (nb === 1) continue;
+      const cc = nb === 3 ? CUT : base, v0 = f * 4;
+      for (let k = 0; k < 4; k++) {
+        const q = (v0 + k) * 3, c = F.c[k];
+        pos[q] = Math.min(Ww, (x + c[0]) * s) - ox; pos[q + 1] = Math.min(Dd, (y + c[1]) * s) - oy; pos[q + 2] = Math.min(Hh, (z + c[2]) * s) - oz;
+        nor[q] = F.n[0]; nor[q + 1] = F.n[1]; nor[q + 2] = F.n[2];
+        col[q] = cc[0]; col[q + 1] = cc[1]; col[q + 2] = cc[2];
+      }
+      const i6 = f * 6; idx[i6] = v0; idx[i6 + 1] = v0 + 1; idx[i6 + 2] = v0 + 2; idx[i6 + 3] = v0 + 2; idx[i6 + 4] = v0 + 1; idx[i6 + 5] = v0 + 3;
+      f++;
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+  geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  geo.setIndex(new THREE.BufferAttribute(idx, 1));
+  geo.userData.faces = nf;
+  return geo;
+}
+function bestStep(M, budget = 650000) {
+  for (let s = 1; s <= 4; s++) {
+    const P = pooled(M, s), { occ, nx, ny, nz } = P; let n = 0;
+    for (let y = 0; y < ny; y++) for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
+      const i = (y * nz + z) * nx + x; if (!occ[i]) continue;
+      if (x === 0 || !occ[i - 1]) n++; if (x === nx - 1 || !occ[i + 1]) n++;
+      if (y === 0 || !occ[i - nz * nx]) n++; if (y === ny - 1 || !occ[i + nz * nx]) n++;
+      if (z === 0 || !occ[i - nx]) n++; if (z === nz - 1 || !occ[i + nx]) n++;
+    }
+    if (n <= budget) return s;
+  }
+  return 4;
+}
+
+/* ============ 3D viewer ============ */
+function makeViewer(canvas, opt = {}) {
+  if (!window.THREE) return null;
+  const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(30, 1, 0.1, 100000);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x1c2a44, 0.22));
+  const key = new THREE.DirectionalLight(0xffffff, 0.85); key.position.set(-1.4, 1.8, -0.2); cam.add(key);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.32); fill.position.set(1.2, -0.3, 0.8); cam.add(fill); scene.add(cam);
+  const ctl = new THREE.OrbitControls(cam, canvas); ctl.enableDamping = true; ctl.dampingFactor = 0.08;
+  ctl.autoRotate = !!opt.spin && !reduced; ctl.autoRotateSpeed = 1.1;
+  canvas.addEventListener("pointerdown", () => { ctl.autoRotate = false; });
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const group = new THREE.Group(); scene.add(group);
+  let mesh = null, box = null, dims = null, active = false, extra = [];
+  function resize() {
+    const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return;
+    r.setPixelRatio(Math.min(2.5, (window.devicePixelRatio || 1) * Math.max(1, ST.scale)));
+    r.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(canvas);
+  function loop() { if (!active) return; requestAnimationFrame(loop); ctl.update(); r.render(scene, cam); }
+  const api = {
+    ctl, scene, cam, group,
+    set(geo, shape) {
+      if (mesh) { group.remove(mesh); mesh.geometry.dispose(); }
+      mesh = new THREE.Mesh(geo, mat); group.add(mesh);
+      const [Dd, Hh, Ww] = shape, key2 = shape.join();
+      if (!box || dims !== key2) {
+        if (box) { group.remove(box); box.geometry.dispose(); }
+        box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(Ww, Dd, Hh)), new THREE.LineBasicMaterial({ color: 0x8aa0c0, transparent: true, opacity: 0.35 }));
+        group.add(box);
+        if (!dims) api.frame(shape);
+        dims = key2;
+      }
+      if (!active) { resize(); r.render(scene, cam); }
+    },
+    frame(shape) {
+      const [Dd, Hh, Ww] = shape, R = Math.max(Ww, Dd, Hh), k = opt.dist || 1;
+      cam.position.set(R * 2.2 * k, R * 1.9 * k, R * 2.7 * k); ctl.target.set(0, 0, 0);
+      cam.near = R / 100; cam.far = R * 30; cam.updateProjectionMatrix(); ctl.update();
+    },
+    add(o) { group.add(o); extra.push(o); },
+    start() { if (active) return; active = true; resize(); loop(); },
+    stop() { active = false; },
+  };
+  return api;
+}
+
+/* ============ navigation ============ */
+const slides = $$(".slide"), Hs = {};
+const def = (k, o) => (Hs[k] = o);
+let cur = -1, READY;
+function go(i) {
+  i = clamp(i, 0, slides.length - 1); if (i === cur) return;
+  if (cur >= 0) { slides[cur].classList.remove("on"); const h = Hs[slides[cur].dataset.key]; h && h.hide && h.hide(); }
+  cur = i; const s = slides[i]; s.classList.add("on");
+  const h = Hs[s.dataset.key];
+  if (h) READY.then(() => { if (cur !== i) return; if (!h.inited) { h.inited = true; h.init && h.init(); } h.show && h.show(); });
+  $("#count").textContent = `${i + 1} / ${slides.length}`; $("#fnum").textContent = `${i + 1}`;
+  $("#jump").value = String(i); $("#prev").disabled = i === 0; $("#next").disabled = i === slides.length - 1;
+  try { history.replaceState(null, "", "#" + (i + 1)); } catch {}
+  if (ST.flow) $("#viewport").scrollTop = 0;
+}
+const goKey = (k) => go(slides.findIndex((s) => s.dataset.key === k));
+function layout() {
+  const vp = $("#viewport"), flow = window.innerWidth < 760;
+  ST.flow = flow; document.body.classList.toggle("flowmode", flow);
+  if (flow) { $("#stage").style.transform = ""; ST.scale = 1; return; }
+  const s = Math.min(vp.clientWidth / 1600, vp.clientHeight / 900);
+  ST.scale = s; $("#stage").style.transform = `translate(-50%,-50%) scale(${s})`;
+}
+/* ============ 1 cover ============ */
+const V = {};
+def("cover", {
+  init() {
+    V.cover = makeViewer($("#coverCanvas"), { spin: true, dist: 0.95 });
+    const show = (m, t) => {
+      if (!V.cover) { $("#coverInfo").textContent = "The 3D library didn't load, so the model can't be shown."; return; }
+      V.cover.set(meshModel(m, { s: bestStep(m) }), m.shape);
+      $("#coverInfo").textContent = `Built in your browser${t ? ` in ${fmt(t / 1000)} s` : ""} from ${D.T.bounds.length} traced cells and ${m.fit.height.length} measured cell lengths: ${m.shape[0]} slices of ${m.shape[1]} × ${m.shape[2]} voxels. Random seed ${m.seed}.`;
+      $("#coverBusy").hidden = true;
+    };
+    show(D.base);
+    $("#coverGen").onclick = async () => {
+      $("#coverBusy").hidden = false; $("#coverGen").disabled = true; await sleep(30);
+      const t0 = performance.now(), m = await makeModel(BASE_P, rseed());
+      show(m, performance.now() - t0); $("#coverGen").disabled = false;
+    };
+  },
+  show() { V.cover && V.cover.start(); }, hide() { V.cover && V.cover.stop(); },
+});
+
+/* ============ 2 lodging ============ */
+def("lodging", {
+  init() {
+    const svg = $("#lodgeSvg"), NS = "http://www.w3.org/2000/svg";
+    const el = (t, a, p = svg) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; };
+    let peak = 0, failed = null;
+    const draw = () => {
+      const L = +$("#windR").value, t = +$("#rindR").value;
+      $("#windO").textContent = fmt(L, 2); $("#rindO").textContent = fmt(t, 2);
+      const Lf = 0.35 + 0.9 * t, Lb = Math.sqrt((0.25 * (6 * t * t + 0.05)) / 0.6);
+      const mode = Lb < Lf ? "buckle" : "fracture", Lc = Math.min(Lf, Lb);
+      peak = Math.max(peak, L); if (!failed && peak >= Lc) failed = mode;
+      const Le = failed ? Lc : L, stress = Le / Lf, ov = Math.min(0.6, (0.6 * Le * Le) / (6 * t * t + 0.05));
+      svg.innerHTML = "";
+      const ink = cssv("--ink"), cap = cssv("--cap"), line = cssv("--line");
+      el("line", { x1: 30, y1: 560, x2: 520, y2: 560, stroke: line, "stroke-width": 3 });
+      const n = Math.round(L * 7);
+      for (let i = 0; i < n; i++) { const y = 120 + i * 58, len = 40 + L * 70; el("path", { d: `M${10} ${y} h${len}`, stroke: cssv("--blue"), "stroke-width": 3, fill: "none", "marker-end": "url(#ah)", opacity: 0.8 }); }
+      const defs = el("defs", {}); const mk = el("marker", { id: "ah", viewBox: "0 0 10 10", refX: 8, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto" }, defs);
+      el("path", { d: "M0 0L10 5L0 10z", fill: cssv("--blue") }, mk);
+      const bx = 250, by = 560, Ht = 460, green = "#5d8a3a", node = "#3f6526";
+      let pts = [];
+      if (!failed) {
+        const dx = 230 * L * (0.75 / (0.35 + t * 0.6));
+        for (let i = 0; i <= 40; i++) { const u = i / 40; pts.push([bx + dx * u * u, by - Ht * u + (dx * dx / 2600) * u * u]); }
+      } else if (failed === "fracture") {
+        const hb = 46; pts = [[bx, by], [bx, by - hb]];
+        const top = []; const ang = 1.15; for (let i = 0; i <= 20; i++) { const u = i / 20; top.push([bx + 6 + Math.sin(ang) * 210 * u, by - hb - 4 - Math.cos(ang) * 210 * u]); }
+        el("polyline", { points: top.map((p) => p.join(",")).join(" "), fill: "none", stroke: green, "stroke-width": 16, "stroke-linecap": "round" });
+        el("path", { d: `M${bx - 9} ${by - hb} l5 -7 l4 6 l5 -8 l4 7`, stroke: cssv("--burg"), "stroke-width": 3, fill: "none" });
+      } else {
+        const hk = 70; pts = [[bx, by], [bx, by - hk]];
+        const ang = 1.3, top = []; for (let i = 0; i <= 20; i++) { const u = i / 20; top.push([bx + Math.sin(ang) * 200 * u, by - hk - Math.cos(ang) * 200 * u]); }
+        el("polyline", { points: top.map((p) => p.join(",")).join(" "), fill: "none", stroke: green, "stroke-width": 16, "stroke-linecap": "round" });
+        el("circle", { cx: bx, cy: by - hk, r: 11, fill: "none", stroke: cssv("--burg"), "stroke-width": 3 });
+      }
+      el("polyline", { points: pts.map((p) => p.join(",")).join(" "), fill: "none", stroke: green, "stroke-width": 16, "stroke-linecap": "round", "stroke-linejoin": "round" });
+      if (!failed) for (let i = 1; i < 6; i++) { const p = pts[Math.round((i / 6) * 40)]; el("line", { x1: p[0] - 10, y1: p[1], x2: p[0] + 10, y2: p[1], stroke: node, "stroke-width": 4 });
+        const s = i % 2 ? 1 : -1; el("path", { d: `M${p[0]} ${p[1]} q ${s * 50 + L * 40} 10 ${s * 90 + L * 90} ${40 - L * 10}`, stroke: "#7fa857", "stroke-width": 5, fill: "none", "stroke-linecap": "round" }); }
+      // inset cross-section
+      const cx = 610, cy = 165, R = 74;
+      el("text", { x: cx, y: 52, "text-anchor": "middle", fill: ink, "font-size": 20 }).textContent = "Cross-section at the base";
+      el("ellipse", { cx, cy, rx: R * (1 + ov), ry: R * (1 - ov), fill: "#f0d6c4", stroke: "#7c2f4d", "stroke-width": 4 + t * 16 });
+      el("text", { x: cx, y: cy + 6, "text-anchor": "middle", fill: "#4a2a2a", "font-size": 16 }).textContent = "pith";
+      // meters
+      const meter = (y, lab, v, crit) => {
+        el("text", { x: 470, y, fill: ink, "font-size": 17 }).textContent = lab;
+        el("rect", { x: 470, y: y + 8, width: 280, height: 16, fill: "none", stroke: cap });
+        el("rect", { x: 470, y: y + 8, width: 280 * Math.min(1, v), height: 16, fill: v >= 0.995 ? cssv("--burg") : cssv("--blue") });
+        if (crit) el("text", { x: 750, y: y + 44, fill: cap, "font-size": 14, "text-anchor": "end" }).textContent = crit;
+      };
+      meter(300, "Bending stress vs. tissue strength", stress, `${Math.round(stress * 100)}%`);
+      meter(370, "Flattening vs. collapse point", ov / 0.25, `${Math.round((ov / 0.25) * 100)}%`);
+      const out = $("#lodgeOut");
+      if (failed === "fracture") out.innerHTML = "<b>Material failure.</b> Bending stress reached the tissue's strength before the section flattened. The stalk snapped near the base.";
+      else if (failed === "buckle") out.innerHTML = "<b>Brazier buckling.</b> The thin rind let the section flatten until it folded, before the tissue itself broke. The stalk kinked.";
+      else out.innerHTML = `Standing. With this rind, the stalk would ${mode === "buckle" ? "buckle (flatten and fold)" : "snap (tissue breaks)"} first, at a load of about ${fmt(Lc, 2)}.`;
+    };
+    $("#windR").addEventListener("input", draw);
+    $("#rindR").addEventListener("input", () => { draw(); });
+    $("#lodgeReset").onclick = () => { failed = null; peak = 0; $("#windR").value = 0.2; draw(); };
+    this.draw = draw; draw();
+  },
+  show() { this.draw && this.draw(); },
+});
+
+/* ============ 3 anatomy ============ */
+def("anatomy", {
+  init() {
+    const svg = $("#anatSvg"), NS = "http://www.w3.org/2000/svg";
+    const el = (t, a, p = svg) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; };
+    const cx = 350, cy = 310, R = 275;
+    const rad = (th) => { let d = th; while (d > Math.PI) d -= 2 * Math.PI; return R * (1 + 0.035 * Math.cos(2 * th)) - 70 * Math.exp(-((d / 0.42) ** 2)); };
+    const path = (k) => { let s = ""; for (let i = 0; i <= 240; i++) { const th = (i / 240) * 2 * Math.PI, r = rad(th) * k; s += (i ? "L" : "M") + (cx + r * Math.cos(th)).toFixed(1) + " " + (cy + r * Math.sin(th)).toFixed(1); } return s + "Z"; };
+    const defs = el("defs", {}); const pat = el("pattern", { id: "pc", width: 14, height: 12, patternUnits: "userSpaceOnUse" }, defs);
+    el("circle", { cx: 7, cy: 6, r: 5.4, fill: "none", stroke: "#d79bbb", "stroke-width": 1 }, pat);
+    const gR = el("g", { "data-t": "rind", class: "hit" }), gP = el("g", { "data-t": "pith", class: "hit" }), gV = el("g", { "data-t": "bundles", class: "hit" });
+    el("path", { d: path(1) + path(0.93), fill: "#6d2448", "fill-rule": "evenodd" }, gR); el("path", { d: path(0.93) + path(0.87), fill: "#4f9fb6", "fill-rule": "evenodd" }, gR);
+    el("path", { d: path(0.87), fill: "#f3cde0" }, gP); el("path", { d: path(0.87), fill: "url(#pc)" }, gP);
+    const g = PVG.makeRng(5); let placed = 0, tries = 0; const pts = [];
+    while (placed < 120 && tries < 20000) {
+      tries++; const th = g.random() * 2 * Math.PI, u = Math.pow(g.random(), 0.55) * 0.84, rr = rad(th) * u;
+      if (g.random() > 0.25 + 0.75 * u) continue;
+      const x = cx + rr * Math.cos(th), y = cy + rr * Math.sin(th);
+      if (pts.some((p) => (p[0] - x) ** 2 + (p[1] - y) ** 2 < 26 * 26)) continue;
+      pts.push([x, y]); placed++;
+    }
+    for (const [x, y] of pts) { el("circle", { cx: x, cy: y, r: 9, fill: "#b49ad6" }, gV); el("circle", { cx: x, cy: y, r: 5, fill: "#3b2c63" }, gV); }
+    const T = {
+      rind: ["Rind (sclerenchyma)", "A tough outer band of small cells with thick, lignified walls. Because it sits farthest from the center, it carries most of the bending load."],
+      pith: ["Pith (parenchyma)", "Large, thin-walled cells that fill the center. The pith is light and soft, and it supports the rind from inside so the section resists flattening."],
+      bundles: ["Vascular bundles", "Strands of tracheary elements (xylem) that carry water and sieve elements (phloem) that carry sugars, wrapped in fibers. They run the full length of the stalk and crowd together near the rind."],
+    };
+    const zoom = $("#anatZoom");
+    const drawZoom = (k) => {
+      zoom.innerHTML = ""; const z = (t, a) => el(t, a, zoom); const gg = PVG.makeRng(k.length);
+      z("rect", { x: 0, y: 0, width: 240, height: 240, fill: "#fbf3f7" });
+      const cells = (r, sw, col, fill, jit) => { for (let y = r; y < 240 + r; y += r * 1.75) for (let x = ((y / (r * 1.75)) % 2) * r * 1; x < 240 + r; x += r * 2) z("circle", { cx: x + (gg.random() - 0.5) * jit, cy: y + (gg.random() - 0.5) * jit, r: r * (0.88 + gg.random() * 0.12), fill, stroke: col, "stroke-width": sw }); };
+      if (k === "rind") { z("rect", { x: 0, y: 0, width: 240, height: 240, fill: "#6d2448" }); cells(9, 5, "#3d0f26", "#e7b5c9", 2); }
+      else if (k === "pith") cells(28, 2, "#b0658b", "#fbe8f1", 6);
+      else { cells(16, 2, "#b0658b", "#fbe8f1", 3); z("circle", { cx: 120, cy: 120, r: 70, fill: "#3b2c63" }); z("circle", { cx: 120, cy: 120, r: 60, fill: "#efe6fb" });
+        z("circle", { cx: 88, cy: 128, r: 22, fill: "#fff", stroke: "#3b2c63", "stroke-width": 5 }); z("circle", { cx: 152, cy: 128, r: 22, fill: "#fff", stroke: "#3b2c63", "stroke-width": 5 });
+        for (let i = 0; i < 9; i++) z("circle", { cx: 100 + (i % 3) * 20, cy: 76 + Math.floor(i / 3) * 14, r: 7, fill: "#fff", stroke: "#6b4a9b", "stroke-width": 2 });
+        z("text", { x: 120, y: 172, "text-anchor": "middle", "font-size": 14, fill: "#3b2c63" }).textContent = "xylem"; z("text", { x: 120, y: 66, "text-anchor": "middle", "font-size": 14, fill: "#3b2c63" }).textContent = "phloem"; }
+    };
+    const chips = $("#anatChips");
+    const sel = (k) => {
+      for (const gq of [gR, gP, gV]) gq.style.opacity = gq.dataset.t === k ? 1 : 0.32;
+      $("#anatName").textContent = T[k][0]; $("#anatText").textContent = T[k][1]; drawZoom(k);
+      $$("button", chips).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.t === k)));
+    };
+    for (const k of ["rind", "pith", "bundles"]) { const b = document.createElement("button"); b.className = "chip"; b.type = "button"; b.dataset.t = k; b.textContent = T[k][0]; b.onclick = () => sel(k); chips.appendChild(b); }
+    for (const gq of [gR, gP, gV]) { gq.style.cursor = "pointer"; gq.style.transition = "opacity .2s"; gq.addEventListener("click", () => sel(gq.dataset.t)); }
+    sel("rind");
+  },
+});
+
+/* ============ 4 scales ============ */
+def("scales", {
+  init() {
+    const L = $("#ladder"), NS = "http://www.w3.org/2000/svg";
+    const tiles = [["DNA", "about 2 nm"], ["Wall polymers", "about 10 nm"], ["Cell wall", "about 1 µm thick"], ["Cellular microstructure", "about 10–100 µm"], ["Tissue", "about 1 mm"], ["Organ (stalk)", "about 2 cm across"], ["Whole plant", "about 2 m"], ["Field", "100 m and up"]];
+    const info = ["Genes and the molecules they encode.", "Cellulose, hemicellulose and lignin chains that make up cell walls.", "The layered wall around each cell, the plant's basic structural material.", "The arrangement of cells and their walls in 3D. PlantVG models this level.", "Rind, pith and vascular bundles, each a mix of cell types.", "The stalk: tissues arranged in a cross-section and along a length.", "Stalk, leaves and ear working together under wind load.", "Thousands of plants: where lodging is counted and yield is lost."];
+    const XS = 112, YS = 70;
+    const svg = document.createElementNS(NS, "svg"); svg.setAttribute("style", "position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;z-index:5"); L.appendChild(svg);
+    const els = tiles.map(([a, b], i) => { const t = document.createElement("button"); t.type = "button"; t.className = "tile"; t.style.left = 20 + i * XS + "px"; t.style.top = 10 + i * YS + "px"; t.innerHTML = `${a}<small>${b}</small>`; t.onclick = () => pickT(i); L.appendChild(t); return t; });
+    const ctr = (i) => [20 + i * XS + 90, 10 + i * YS + 48];
+    const arrow = (a, b, off, col) => {
+      const [x1, y1] = ctr(a), [x2, y2] = ctr(b), dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy), q = Math.hypot(XS, YS), nx = -YS / q, ny = XS / q;
+      const sx = x1 + nx * off + (dx / len) * 20, sy = y1 + ny * off + (dy / len) * 20, ex = x2 + nx * off - (dx / len) * 20, ey = y2 + ny * off - (dy / len) * 20;
+      const p = document.createElementNS(NS, "path"); p.setAttribute("d", `M${sx} ${sy}L${ex} ${ey}`); p.setAttribute("stroke", col); p.setAttribute("stroke-width", 22); p.setAttribute("fill", "none"); p.setAttribute("marker-end", `url(#m${col.replace("#", "")})`); p.setAttribute("opacity", 0.92);
+      svg.appendChild(p);
+    };
+    const C = { gen: ["Geneticists: bottom-up", "Start from genes and molecules and work up toward traits.", [0, 3], "#e07a1f", -150], agr: ["Agronomists: top-down", "Start from fields and whole plants and work down toward causes.", [7, 4], "#e07a1f", -150], bio: ["Biomechanics: middle-out", "Start with structure in the middle and connect both ways: how walls and cells make a stalk strong.", [2, 6], "#9d2235", 150] };
+    const btns = $("#scaleBtns");
+    const pickC = (k) => {
+      svg.innerHTML = `<defs>${["e07a1f", "9d2235"].map((c) => `<marker id="m${c}" viewBox="0 0 10 10" refX="4" refY="5" markerWidth="2.6" markerHeight="2.6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#${c}"/></marker>`).join("")}</defs>`;
+      const [lab, txt, [a, b], col, off] = C[k];
+      if (k === "bio") { arrow(4, 2, off, col); arrow(4, 6, off, col); } else arrow(a, b, off, col);
+      const lo = Math.min(a, b), hi = Math.max(a, b);
+      els.forEach((t, i) => { t.classList.toggle("hi", i >= lo && i <= hi); t.classList.toggle("dim", !(i >= lo && i <= hi)); });
+      $$("button", btns).forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.k === k)));
+      $("#scaleOut").innerHTML = `<b>${lab}.</b> ${txt}`;
+    };
+    const pickT = (i) => { els.forEach((t, j) => t.classList.toggle("sel", j === i)); $("#scaleOut").innerHTML = `<b>${tiles[i][0]}</b>, ${tiles[i][1]}. ${info[i]}`; };
+    for (const k of ["gen", "agr", "bio"]) { const b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.dataset.k = k; b.textContent = C[k][0]; b.onclick = () => pickC(k); btns.appendChild(b); }
+    pickT(3); pickC("bio");
+  },
+});
+
+/* ============ 5 hooke ============ */
+def("hooke", {
+  init() {
+    const st = { last: null }, k0 = 1.5;
+    const draw = (what) => {
+      const E = +$("#hE").value, A = +$("#hA").value, L = +$("#hL").value; if (what) st.last = what;
+      $("#hEo").textContent = fmt(E, 2); $("#hAo").textContent = fmt(A, 2); $("#hLo").textContent = fmt(L, 2);
+      const F = 1, k = (E * A) / L, x = F / k, sig = F / A, eps = x / L;
+      const svg = $("#hBar"), wpx = 30 * Math.sqrt(A) * 1.6, L0 = 200 * L, ext = Math.min(220, x * 90);
+      const bar = cssv("--title"), cap = cssv("--cap");
+      svg.innerHTML = `<rect x="20" y="16" width="200" height="14" fill="${cssv("--muted")}"/>
+        <rect x="${120 - wpx / 2}" y="30" width="${wpx}" height="${L0 + ext}" fill="${bar}" opacity="${0.45 + E / 6}"/>
+        <line x1="${120 - wpx / 2 - 20}" y1="${30 + L0}" x2="${120 + wpx / 2 + 20}" y2="${30 + L0}" stroke="${cap}" stroke-dasharray="5 4"/>
+        <text x="200" y="${30 + L0 + ext / 2 + 5}" fill="${cssv("--burg")}" font-size="16" text-anchor="middle">x</text>
+        <line x1="185" y1="${30 + L0}" x2="185" y2="${30 + L0 + ext}" stroke="${cssv("--burg")}" stroke-width="2"/>
+        <rect x="80" y="${30 + L0 + ext}" width="80" height="40" fill="#c9a227"/><text x="120" y="${30 + L0 + ext + 26}" font-size="18" text-anchor="middle" fill="#2a2208">F</text>`;
+      const plot = (c, xmax, ymax, slope, pt, xl, yl, ref, lab) => {
+        const W = 360, H = 470, g = ctx(c, W, H); g.clearRect(0, 0, W, H);
+        const Ax = axes(g, W, H, 0, xmax, 0, ymax, { xl, yl, nx: 4, ny: 4, fs: 15 });
+        g.save(); g.beginPath(); g.rect(Ax.L, Ax.T, Ax.pw, Ax.ph); g.clip();
+        g.strokeStyle = cssv("--line"); g.setLineDash([6, 5]); g.lineWidth = 2; g.beginPath(); g.moveTo(Ax.X(0), Ax.Y(0)); g.lineTo(Ax.X(xmax), Ax.Y(ref * xmax)); g.stroke(); g.setLineDash([]);
+        g.strokeStyle = cssv("--plot-fit"); g.lineWidth = 3.5; g.beginPath(); g.moveTo(Ax.X(0), Ax.Y(0)); g.lineTo(Ax.X(xmax), Ax.Y(slope * xmax)); g.stroke();
+        g.fillStyle = cssv("--plot-bar"); g.beginPath(); g.arc(Ax.X(pt[0]), Ax.Y(pt[1]), 7, 0, 7); g.fill(); g.restore();
+        g.fillStyle = cssv("--ink"); g.font = "500 17px Rubik, Arial, sans-serif"; g.textAlign = "left"; g.fillText(lab, Ax.L + 12, Ax.T + 20);
+      };
+      plot($("#hFx"), 3.4, 2, k, [Math.min(x, 3.4), F], "displacement x", "force F", k0, `slope k = ${fmt(k, 2)}`);
+      plot($("#hSe"), 3.4, 2, E, [Math.min(eps, 3.4), sig], "strain ε = x / L", "stress σ = F / A", k0, `slope E = ${fmt(E, 2)}`);
+      const msg = st.last === "E" ? "You changed the material: both slopes moved." : st.last ? "You changed the geometry: k moved, but E stayed put. The material is the same." : "Dashed lines show the starting values.";
+      $("#hOut").innerHTML = `k = EA / L = ${fmt(E, 2)} × ${fmt(A, 2)} / ${fmt(L, 2)} = <b>${fmt(k, 2)}</b><br>x = F / k = ${fmt(x, 2)}<br>${msg}`;
+    };
+    $("#hE").oninput = () => draw("E"); $("#hA").oninput = () => draw("A"); $("#hL").oninput = () => draw("L");
+    this.draw = draw; draw();
+  },
+  show() { this.draw && this.draw(); },
+});
+
+/* ============ 6 + 19 chain ============ */
+const LV = ["Cell wall", "Cellular microstructure", "Tissue", "Organ", "Plant"];
+function buildChain(box, onPick) {
+  box.innerHTML = ""; const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg"); box.appendChild(svg);
+  const B = LV.map((n, i) => {
+    const l = document.createElement("div"); l.className = "lvl";
+    l.innerHTML = `<div class="name">${n}</div><button type="button" class="mat">Material</button><button type="button" class="geo">Geometry</button>`;
+    box.appendChild(l);
+    const [m, g] = $$("button", l); m.onclick = () => onPick(i, "mat"); g.onclick = () => onPick(i, "geo");
+    return { l, m, g };
+  });
+  const arrows = () => {
+    svg.innerHTML = `<defs><marker id="ca${box.id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#e07a1f"/></marker></defs>`;
+    const pos = (el, lv) => ({ x: lv.offsetLeft + el.offsetLeft, y: lv.offsetTop + el.offsetTop, w: el.offsetWidth, h: el.offsetHeight });
+    for (let i = 0; i < 4; i++) {
+      const a = pos(B[i].m, B[i].l), g = pos(B[i].g, B[i].l), b = pos(B[i + 1].m, B[i + 1].l);
+      const ym = a.y + a.h / 2, yg = g.y + g.h / 2, xm = (a.x + a.w + b.x) / 2;
+      const p = document.createElementNS(NS, "path");
+      p.setAttribute("d", `M${a.x + a.w} ${ym}H${b.x - 2}M${g.x + g.w} ${yg}H${xm}V${ym}`); p.setAttribute("stroke", "#e07a1f"); p.setAttribute("stroke-width", 2.5); p.setAttribute("fill", "none");
+      p.dataset.i = i; svg.appendChild(p);
+      const q = document.createElementNS(NS, "path"); q.setAttribute("d", `M${b.x - 14} ${ym}H${b.x - 2}`); q.setAttribute("stroke", "#e07a1f"); q.setAttribute("stroke-width", 2.5); q.setAttribute("marker-end", `url(#ca${box.id})`); svg.appendChild(q);
+    }
+  };
+  requestAnimationFrame(arrows);
+  return {
+    B, arrows,
+    mark(fn) { B.forEach((b, i) => { for (const k of ["m", "g"]) { const r = fn(i, k === "m" ? "mat" : "geo") || {}; const el = b[k]; el.classList.toggle("hi", !!r.hi); el.classList.toggle("dim", !!r.dim); el.classList.toggle("tag", !!r.tag); if (r.tag) el.dataset.tag = r.tag; else delete el.dataset.tag; } }); },
+  };
+}
+def("chain", {
+  init() {
+    let mode = "flow", pick = 2;
+    const C = buildChain($("#chain1"), (i, k) => { if (mode === "flow") { pick = k === "mat" && i > 0 ? i : Math.min(4, i + 1); render(); } else render(i, k); });
+    const render = () => {
+      const out = $("#chainOut");
+      if (mode === "flow") {
+        C.mark((i, k) => ({ hi: (i === pick - 1) || (i === pick && k === "mat"), dim: !((i === pick - 1) || (i === pick && k === "mat")) }));
+        out.innerHTML = `<b>${LV[pick]} material</b> = ${LV[pick - 1].toLowerCase()} material + ${LV[pick - 1].toLowerCase()} geometry. Select another level's material box to follow the chain.`;
+      } else if (mode === "prior") {
+        C.mark((i) => ({ hi: i >= 2, dim: i < 2, tag: i >= 2 ? "earlier work" : "" }));
+        out.innerHTML = "<b>Groundwork already laid.</b> Earlier work modeled the upper levels: tissue stress in stalk cross-sections, finite-element models of whole stalks and their Brazier buckling, and bending of whole plants (for example Robertson 2014–2017, Al-Zube 2017–2018, Stubbs 2020–2023).";
+      } else {
+        C.mark((i, k) => ({ hi: i === 1 && k === "geo", dim: !(i === 1 && k === "geo"), tag: i === 1 && k === "geo" ? "PlantVG" : "" }));
+        out.innerHTML = "<b>The missing piece.</b> To predict tissue properties from the bottom up, we need the 3D geometry of the cells themselves. That is what PlantVG generates, from slides any lab can make.";
+      }
+    };
+    $$("#chainSeg button").forEach((b) => (b.onclick = () => { mode = b.dataset.m; $$("#chainSeg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); render(); }));
+    this.C = C; render();
+  },
+  show() { this.C && requestAnimationFrame(this.C.arrows); },
+});
+def("next", {
+  init() {
+    const T = {
+      "0mat": "Give the cell wall its own material model: the polymers of the wall and how they are layered.",
+      "0geo": "Model the wall's own geometry: its layers and thickness, which PlantVG currently treats as uniform.",
+      "1mat": "Run finite-element simulations on PlantVG models to find the effective material properties of the cellular microstructure, which then feed the tissue level.",
+      "1geo": "Done: PlantVG generates this from two microscope slides.",
+    };
+    const C = buildChain($("#chain2"), (i, k) => { const t = T[i + k]; $("#nextOut").innerHTML = t ? `<b>${LV[i]} ${k === "mat" ? "material" : "geometry"}.</b> ${t}` : `<b>${LV[i]}.</b> Covered by earlier tissue, organ and plant models.`; });
+    C.mark((i, k) => (i === 0 || (i === 1 && k === "mat") ? { hi: true, tag: "next" } : i === 1 ? { tag: "done", dim: false } : { dim: true }));
+    $("#nextOut").innerHTML = "Select a highlighted box to see what comes next.";
+    this.C = C;
+  },
+  show() { this.C && requestAnimationFrame(this.C.arrows); },
+});
+/* ============ 7 gap ============ */
+def("gap", {
+  init() {
+    V.gap = makeViewer($("#gapCanvas"), { dist: 1.05 });
+    let dir = "t", raf = 0; const M = D.base, [Dd, Hh, Ww] = M.shape;
+    const draw = () => {
+      raf = 0; const p = +$("#gapPos").value;
+      if (V.gap) V.gap.set(meshModel(M, { s: 2, cutY: dir === "t" ? Math.max(0.02, p) : 1, cutX: dir === "l" ? Math.max(0.02, p) : 1 }), M.shape);
+      const c = $("#gapSlice");
+      if (dir === "t") {
+        const z = clamp(Math.round(p * Dd) - 1, 0, Dd - 1);
+        imgCanvas(c, Ww, Hh, 3, (i) => { const v = M.vol[z * Hh * Ww + i]; return [v, v, v]; });
+        $("#gapPosO").textContent = `slice ${z + 1}`;
+        $("#gapCap").textContent = "Transverse cut: cells look like round holes, as on a cross-section slide. White is cell wall.";
+      } else {
+        const x = clamp(Math.round(p * Ww) - 1, 0, Ww - 1);
+        imgCanvas(c, Hh, Dd, 3, (i) => { const r = i % Hh, zz = Dd - 1 - ((i / Hh) | 0), v = M.vol[zz * Hh * Ww + r * Ww + x]; return [v, v, v]; });
+        $("#gapPosO").textContent = `column ${x + 1}`;
+        $("#gapCap").textContent = "Longitudinal cut: long cells stacked end to end, closed by end caps, as on a lengthwise slide.";
+      }
+      $("#gapBusy").hidden = true;
+    };
+    $("#gapPos").oninput = () => { if (!raf) raf = requestAnimationFrame(draw); };
+    $$("#gapSeg button").forEach((b) => (b.onclick = () => { dir = b.dataset.c; $$("#gapSeg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); draw(); }));
+    draw();
+  },
+  show() { V.gap && V.gap.start(); }, hide() { V.gap && V.gap.stop(); },
+});
+
+/* ============ 8 pixels to voxels ============ */
+def("voxel", {
+  init() {
+    const N = 12, px = new Uint8Array(N * N), grid = $("#vxGrid");
+    const cells = [...Array(N * N)].map((_, i) => { const s = document.createElement("span"); s.dataset.i = i; grid.appendChild(s); return s; });
+    const ring = () => { px.fill(0); for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) { const d = Math.hypot(r - 5.5, c - 5.5); if (d > 3.2 && d < 5.1) px[r * N + c] = 1; } };
+    const sync = () => cells.forEach((s, i) => s.classList.toggle("on", !!px[i]));
+    let paint = null;
+    const at = (e) => { const t = document.elementFromPoint(e.clientX, e.clientY); return t && t.parentNode === grid ? +t.dataset.i : -1; };
+    grid.addEventListener("pointerdown", (e) => { const i = at(e); if (i < 0) return; paint = px[i] ? 0 : 1; px[i] = paint; grid.setPointerCapture(e.pointerId); sync(); draw(); });
+    grid.addEventListener("pointermove", (e) => { if (paint === null) return; const i = at(e); if (i >= 0 && px[i] !== paint) { px[i] = paint; sync(); draw(); } });
+    grid.addEventListener("pointerup", () => (paint = null)); grid.addEventListener("pointercancel", () => (paint = null));
+    const interior = () => { const out = new Uint8Array(N * N), seen = new Uint8Array(N * N), st = []; for (let i = 0; i < N; i++) for (const j of [i, (N - 1) * N + i, i * N, i * N + N - 1]) if (!px[j] && !seen[j]) { seen[j] = 1; st.push(j); }
+      while (st.length) { const j = st.pop(), r = (j / N) | 0, c = j % N; for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const rr = r + dr, cc = c + dc; if (rr < 0 || cc < 0 || rr >= N || cc >= N) continue; const k = rr * N + cc; if (!px[k] && !seen[k]) { seen[k] = 1; st.push(k); } } }
+      for (let i = 0; i < N * N; i++) out[i] = !px[i] && !seen[i] ? 1 : 0; return out; };
+    const draw = () => {
+      const d = +$("#vxD").value, cap = $("#vxCap").checked; $("#vxDo").textContent = d;
+      const W = 520, H = 520, g = ctx($("#vxIso"), W, H); g.clearRect(0, 0, W, H);
+      const s = Math.min(W / 25, (H - 20) / (13 + d)), sy = s / 2, sz = s, ox = W / 2, oy = (H - (d + 12) * s) / 2 + d * s;
+      const inn = cap ? interior() : null, cz = Math.floor((d - 1) / 2);
+      const P = (c, r, z) => [ox + (c - r) * s, oy + (c + r) * sy - z * sz];
+      const T = cssv("--title"), cube = (c, r, z, top, l, rr) => {
+        const [x, y] = P(c, r, z);
+        g.fillStyle = top; g.beginPath(); g.moveTo(x, y - sz); g.lineTo(x + s, y - sz + sy); g.lineTo(x, y - sz + 2 * sy); g.lineTo(x - s, y - sz + sy); g.closePath(); g.fill();
+        g.fillStyle = l; g.beginPath(); g.moveTo(x - s, y - sz + sy); g.lineTo(x, y - sz + 2 * sy); g.lineTo(x, y + 2 * sy); g.lineTo(x - s, y + sy); g.closePath(); g.fill();
+        g.fillStyle = rr; g.beginPath(); g.moveTo(x + s, y - sz + sy); g.lineTo(x, y - sz + 2 * sy); g.lineTo(x, y + 2 * sy); g.lineTo(x + s, y + sy); g.closePath(); g.fill();
+      };
+      let n = 0;
+      for (let z = 0; z < d; z++) for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+        const i = r * N + c, on = px[i] || (inn && z === cz && inn[i]); if (!on) continue; n++;
+        const isCap = !px[i];
+        cube(c, r, z, isCap ? "#e7b0bb" : "#8fb0de", isCap ? "#9d2235" : "#2f5591", isCap ? "#6f1523" : "#1d3a6b");
+      }
+      const wall = px.reduce((a, b) => a + b, 0) * d;
+      $("#vxCapTxt").textContent = `${N} × ${N} pixels × ${d} slices = ${N * N * d} voxels, of which ${n.toLocaleString()} are solid${cap ? ` (${(n - wall).toLocaleString()} in the end cap)` : ""}.`;
+    };
+    $("#vxD").oninput = draw; $("#vxCap").onchange = draw;
+    $("#vxRing").onclick = () => { ring(); sync(); draw(); }; $("#vxClear").onclick = () => { px.fill(0); sync(); draw(); };
+    ring(); sync(); this.draw = draw; draw();
+  },
+  show() { this.draw && this.draw(); },
+});
+
+/* ============ 9 process ============ */
+def("process", {
+  init() {
+    const F = $("#flow"), NS = "http://www.w3.org/2000/svg";
+    const N = {
+      ts: [60, 0, 250, "Transverse slide", null, "A cross-section photographed under a light microscope.", "io"],
+      tb: [60, 100, 250, "Binarize", "binarize", "Threshold to black and white."],
+      tt: [60, 200, 250, "Trace every cell", "trace", "Fill, group and outline each cell interior."],
+      ls: [1146, 0, 250, "Longitudinal slide", null, "A lengthwise section of the same tissue.", "io"],
+      lb: [1146, 100, 250, "Binarize", "binarize", "Same thresholding as the transverse slide."],
+      lm: [1146, 200, 250, "Measure cell lengths", "lengths", "Height of each whole cell; edge-clipped cells dropped."],
+      lf: [1146, 300, 250, "Fit a distribution", "fit", "Turn the measured lengths into a distribution to draw from."],
+      ec: [603, 300, 250, "Place end caps", "caps", "Random walk up every cell column."],
+      fl: [603, 400, 250, "Round the corners", "fillets", "Fillet profiles where caps meet walls."],
+      as: [603, 500, 250, "Build the voxel matrix", "assemble", "Grow, extrude and cap every traced cell."],
+      cr: [930, 500, 230, "Crop and downsample", "stack", "Drop the buffer slices and edges; reduce resolution."],
+      ex: [1206, 500, 220, "TIFF stack", "stack", "A multi-page TIFF for ImageJ, FIJI or meshing.", "io"],
+    };
+    const svg = document.createElementNS(NS, "svg"); F.appendChild(svg);
+    svg.innerHTML = `<defs><marker id="fa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="${cssv("--cap")}"/></marker></defs>`;
+    const H = 58, c = (k) => [N[k][0] + N[k][2] / 2, N[k][1]], bot = (k) => [N[k][0] + N[k][2] / 2, N[k][1] + H];
+    const line = (d, lab, lx, ly) => { const p = document.createElementNS(NS, "path"); p.setAttribute("d", d); p.setAttribute("stroke", cssv("--cap")); p.setAttribute("stroke-width", 2); p.setAttribute("fill", "none"); p.setAttribute("marker-end", "url(#fa)"); svg.appendChild(p);
+      if (lab) { const t = document.createElementNS(NS, "text"); t.setAttribute("x", lx); t.setAttribute("y", ly); t.setAttribute("font-size", 15); t.setAttribute("fill", cssv("--cap")); t.textContent = lab; svg.appendChild(t); } };
+    const v = (a, b) => { const [x, y] = bot(a); line(`M${x} ${y}V${N[b][1] - 2}`); };
+    v("ts", "tb"); v("tb", "tt"); v("ls", "lb"); v("lb", "lm"); v("lm", "lf"); v("ec", "fl"); v("fl", "as");
+    line(`M310 229H${603 + 125}V298`, "number of cells", 330, 220);
+    line(`M1146 329H855`, "length distribution", 905, 320);
+    line(`M185 258V529H601`, "cell outlines", 200, 520);
+    line(`M853 529H928`); line(`M1160 529H1204`);
+    const tip = document.createElement("div"); tip.className = "readout flowtip"; tip.style.left = "260px"; tip.style.top = "300px"; tip.style.width = "300px"; tip.style.bottom = "auto";
+    tip.textContent = "Select a step to open its slide."; F.appendChild(tip);
+    let step = 0;
+    for (const k in N) {
+      const [x, y, w, lab, key, txt, io] = N[k], b = document.createElement("button"); b.type = "button";
+      b.className = "node" + (io ? " io" : ""); Object.assign(b.style, { left: x + "px", top: y + "px", width: w + "px", minHeight: H + "px" });
+      b.innerHTML = lab + (key ? `<span class="go">Open this step</span>` : "");
+      b.onmouseenter = b.onfocus = () => (tip.innerHTML = `<b>${lab}.</b> ${txt}`);
+      if (key) b.onclick = () => goKey(key); else b.disabled = false;
+      F.appendChild(b); step++;
+    }
+  },
+});
+
+/* ============ 10 binarize ============ */
+def("binarize", {
+  init() {
+    const T = D.T, W = T.W, H = T.H, n = W * H, g = PVG.makeRng(11);
+    let f = new Float32Array(n); for (let i = 0; i < n; i++) f[i] = T.bw[i] ? 196 : 92;
+    for (let pass = 0; pass < 2; pass++) { const o = new Float32Array(n); for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) { let s = 0, k = 0; for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { const rr = r + dr, cc = c + dc; if (rr < 0 || cc < 0 || rr >= H || cc >= W) continue; s += f[rr * W + cc]; k++; } o[r * W + c] = s / k; } f = o; }
+    const spots = [...Array(16)].map(() => [g.random() * W, g.random() * H, 2 + g.random() * 3.5]);
+    const gray = new Uint8Array(n);
+    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+      let v = f[r * W + c] + (c / W - 0.5) * 46 - (r / H - 0.5) * 16 + g.normal(0, 13);
+      for (const [x, y, s] of spots) { const d = Math.hypot(c - x, r - y); if (d < s) v -= 70 * (1 - d / s); }
+      gray[r * W + c] = clamp(Math.round(v), 0, 255);
+    }
+    const inv = new Uint8Array(n); for (let i = 0; i < n; i++) inv[i] = 255 - gray[i];
+    let walls = "dark";
+    const img = () => (walls === "dark" ? gray : inv);
+    const otsu = () => Math.round(PVG.graythresh(img()) * 255);
+    const draw = () => {
+      const t = +$("#bzT").value, im = img(), showErr = $("#bzErr").checked; $("#bzTo").textContent = t;
+      imgCanvas($("#bzGray"), W, H, 2, (i) => [im[i], im[i], im[i]]);
+      let bad = 0;
+      imgCanvas($("#bzBin"), W, H, 2, (i) => {
+        const lumen = walls === "dark" ? im[i] / 255 > t / 255 : im[i] / 255 <= t / 255, ok = !!lumen === !!T.bw[i];
+        if (!ok) bad++;
+        if (!ok && showErr) return [230, 60, 80]; const v = lumen ? 255 : 0; return [v, v, v];
+      });
+      const Wp = 900, Hp = 173, gg = ctx($("#bzHist"), Wp, Hp); gg.clearRect(0, 0, Wp, Hp);
+      const h = new Array(256).fill(0); for (const v of im) h[v]++; const ym = Math.max(...h);
+      const A = axes(gg, Wp, Hp, 0, 255, 0, ym, { xl: "brightness (0 = black, 255 = white)", noYt: true, B: 40, L: 22, T: 10, fs: 13 });
+      gg.fillStyle = cssv("--plot-bar"); for (let v = 0; v < 256; v++) gg.fillRect(A.X(v), A.Y(h[v]), Math.max(1, A.pw / 256), A.Y(0) - A.Y(h[v]));
+      const o = otsu();
+      gg.strokeStyle = cssv("--cap"); gg.setLineDash([5, 4]); gg.lineWidth = 2; gg.beginPath(); gg.moveTo(A.X(o), A.T); gg.lineTo(A.X(o), A.T + A.ph); gg.stroke(); gg.setLineDash([]);
+      gg.strokeStyle = cssv("--plot-fit"); gg.lineWidth = 3; gg.beginPath(); gg.moveTo(A.X(t), A.T); gg.lineTo(A.X(t), A.T + A.ph); gg.stroke();
+      gg.font = "14px Rubik, Arial, sans-serif"; gg.fillStyle = cssv("--cap"); gg.textAlign = o > t ? "left" : "right"; gg.fillText("Otsu", A.X(o) + (o > t ? 6 : -6), A.T + 14);
+      gg.fillStyle = cssv("--plot-fit"); gg.textAlign = o > t ? "right" : "left"; gg.fillText("your threshold", A.X(t) + (o > t ? -6 : 6), A.T + 14);
+      $("#bzOut").innerHTML = `Threshold <b>${t}</b>, Otsu's choice <b>${o}</b>.<br>${fmt((bad / n) * 100)}% of pixels disagree with the clean mask${bad / n < 0.04 ? "; the leftovers are mostly debris and noise." : "."}`;
+    };
+    $("#bzT").oninput = draw; $("#bzErr").onchange = draw;
+    $("#bzOtsu").onclick = () => { $("#bzT").value = otsu(); draw(); };
+    $$("#bzSeg button").forEach((b) => (b.onclick = () => { walls = b.dataset.w; $$("#bzSeg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); $("#bzT").value = otsu(); draw(); }));
+    $("#bzT").value = 60; draw();
+  },
+});
+
+/* ============ 11 trace ============ */
+def("trace", {
+  init() {
+    const T = D.T, W = T.W, H = T.H, k = 3, c = $("#trCan");
+    let view = "tr", hover = 0, anim = null;
+    const draw = () => {
+      const g = imgCanvas(c, W, H, k, (i) => {
+        const l = T.lab[i];
+        if (view === "bin") { const v = T.bw[i] ? 255 : 0; return [v, v, v]; }
+        if (view === "lab") { if (!l) return [20, 24, 32]; const q = hueRGB(l - 1); return q.map((x) => x * 255); }
+        if (hover && l === hover) { const q = hueRGB(l - 1); return q.map((x) => 140 + x * 115); }
+        const v = T.mask[i] ? 255 : 0; return [v, v, v];
+      });
+      if (view === "tr") {
+        g.lineWidth = 1.1; g.lineJoin = "round";
+        T.bounds.forEach((b, i) => { if (anim && anim.i === i) return; g.strokeStyle = rgbStr(hueRGB(i)); g.beginPath(); b.forEach((p, j) => (j ? g.lineTo(p[1] + 0.5, p[0] + 0.5) : g.moveTo(p[1] + 0.5, p[0] + 0.5))); g.stroke(); });
+        if (anim) {
+          const b = T.bounds[anim.i], m = Math.max(1, Math.floor(anim.t * b.length));
+          g.strokeStyle = "#9d2235"; g.lineWidth = 1.4; g.beginPath(); for (let j = 0; j < m; j++) { const p = b[j]; j ? g.lineTo(p[1] + 0.5, p[0] + 0.5) : g.moveTo(p[1] + 0.5, p[0] + 0.5); } g.stroke();
+          const p = b[m - 1]; g.fillStyle = "#ffc425"; g.beginPath(); g.arc(p[1] + 0.5, p[0] + 0.5, 2.2, 0, 7); g.fill();
+        }
+      }
+    };
+    const info = (i) => {
+      const nS = T.bounds.length;
+      $("#trOut").innerHTML = i ? `<b>Cell ${i} of ${nS}</b><br>Area ${T.area[i - 1].toLocaleString()} pixels<br>Outline ${T.bounds[i - 1].length.toLocaleString()} boundary points` : `<b>${nS} cells</b> found in the ${W} × ${H} pixel slide. Each becomes one tube in the 3D model.`;
+    };
+    const hit = (e) => { const [x, y] = evPos(e, c, W, H); const r = y | 0, cc = x | 0; return r >= 0 && cc >= 0 && r < H && cc < W ? T.lab[r * W + cc] : 0; };
+    c.addEventListener("pointermove", (e) => { const l = hit(e); if (l !== hover) { hover = l; info(l); if (!anim) draw(); } });
+    c.addEventListener("pointerleave", () => { hover = 0; info(0); if (!anim) draw(); });
+    c.addEventListener("click", (e) => { const l = hit(e); if (!l) return; view = "tr"; $$("#trSeg button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.v === "tr")));
+      anim = { i: l - 1, t: 0 }; const t0 = performance.now(), dur = reduced ? 1 : 1400;
+      const step = (now) => { if (!anim) return; anim.t = Math.min(1, (now - t0) / dur); draw(); if (anim.t < 1) requestAnimationFrame(step); else { anim = null; draw(); } }; requestAnimationFrame(step); info(l); });
+    $$("#trSeg button").forEach((b) => (b.onclick = () => { view = b.dataset.v; $$("#trSeg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); draw(); }));
+    info(0); draw();
+  },
+});
+
+/* ============ 12 lengths ============ */
+def("lengths", {
+  init() {
+    const L = D.L, W = L.W, H = L.H, k = 3, c = $("#lnCan"); let hover = 0;
+    const { heights, counted } = D.hc, mIdx = []; counted.forEach((v, i) => v && mIdx.push(i));
+    const lo = $("#lnLo"), hi = $("#lnHi"); for (const s of [lo, hi]) { s.min = 0; s.max = 280; }
+    lo.value = FIT.filter[0]; hi.value = FIT.filter[1];
+    const drawImg = () => {
+      const g = imgCanvas(c, W, H, k, (i) => { const l = L.lab[i]; if (hover && l === hover) return [255, 236, 170]; const v = L.mask[i] ? 255 : 0; return [v, v, v]; });
+      L.bounds.forEach((b, i) => {
+        g.lineWidth = counted[i] ? 1 : 0.8; g.strokeStyle = counted[i] ? "#ffc425" : "#8a93a3"; g.setLineDash(counted[i] ? [] : [2, 1.5]);
+        g.beginPath(); b.forEach((p, j) => (j ? g.lineTo(p[1] + 0.5, p[0] + 0.5) : g.moveTo(p[1] + 0.5, p[0] + 0.5))); g.stroke();
+      });
+      g.setLineDash([]);
+      if (hover && counted[hover - 1]) {
+        const b = L.bounds[hover - 1]; let mn = 1e9, mx = -1, xr = -1; for (const p of b) { mn = Math.min(mn, p[0]); mx = Math.max(mx, p[0]); xr = Math.max(xr, p[1]); }
+        const x = Math.min(W - 6, xr + 4); g.strokeStyle = "#9d2235"; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, mn); g.lineTo(x, mx + 1); g.moveTo(x - 3, mn); g.lineTo(x + 3, mn); g.moveTo(x - 3, mx + 1); g.lineTo(x + 3, mx + 1); g.stroke();
+      }
+    };
+    const drawHist = () => {
+      const a = +lo.value, b = +hi.value; $("#lnLoO").textContent = a; $("#lnHiO").textContent = b;
+      const Wp = 560, Hp = 386, g = ctx($("#lnHist"), Wp, Hp); g.clearRect(0, 0, Wp, Hp);
+      const B = bins(heights, 14, 0, 280), ym = Math.max(...B.counts) + 1;
+      const A = axes(g, Wp, Hp, 0, 280, 0, ym, { xl: "cell length (pixels)", yl: "cells", ny: Math.min(4, ym) });
+      g.fillStyle = cssv("--band"); g.fillRect(A.X(a), A.T, Math.max(0, A.X(b) - A.X(a)), A.ph);
+      const hv = hover && counted[hover - 1] ? heights[mIdx.indexOf(hover - 1)] : null;
+      B.counts.forEach((nn, q) => { if (!nn) return; const x0 = B.lo + q * B.w, inside = x0 + B.w > a && x0 < b; const isH = hv !== null && hv >= x0 && hv < x0 + B.w;
+        g.fillStyle = isH ? "#c9a227" : inside ? cssv("--plot-bar") : cssv("--line"); g.fillRect(A.X(x0) + 1, A.Y(nn), A.X(x0 + B.w) - A.X(x0) - 2, A.Y(0) - A.Y(nn)); });
+      g.strokeStyle = cssv("--burg"); g.lineWidth = 2; for (const v of [a, b]) { g.beginPath(); g.moveTo(A.X(v), A.T); g.lineTo(A.X(v), A.T + A.ph); g.stroke(); }
+      const kept = heights.filter((v) => v > a && v < b);
+      let txt = `<b>${counted.length}</b> cells traced, <b>${heights.length}</b> measurable${heights.length === counted.length ? " (none touch the edge in this example)" : ""}, <b>${kept.length}</b> kept.`;
+      if (kept.length) { const m = kept.reduce((s, v) => s + v, 0) / kept.length, sd = kept.length > 1 ? Math.sqrt(kept.reduce((s, v) => s + (v - m) ** 2, 0) / (kept.length - 1)) : 0; txt += `<br>Mean ${fmt(m)} px, standard deviation ${fmt(sd)} px.`; }
+      else txt += `<br><span class="err">This range keeps no cells. Widen it.</span>`;
+      if (hv !== null) txt += `<br>This cell: <b>${hv} px</b> long.`; else if (hover) txt += `<br>This cell touches the edge, so it isn't measured.`;
+      $("#lnOut").innerHTML = txt;
+    };
+    const onR = (w) => { let a = +lo.value, b = +hi.value; if (a > b) { if (w === 0) a = b; else b = a; lo.value = a; hi.value = b; } if (heights.some((v) => v > a && v < b)) FIT.filter = [a, b]; drawHist(); };
+    lo.oninput = () => onR(0); hi.oninput = () => onR(1);
+    const hit = (e) => { const [x, y] = evPos(e, c, W, H); const r = y | 0, cc = x | 0; return r >= 0 && cc >= 0 && r < H && cc < W ? L.lab[r * W + cc] : 0; };
+    c.addEventListener("pointermove", (e) => { const l = hit(e); if (l !== hover) { hover = l; drawImg(); drawHist(); } });
+    c.addEventListener("pointerleave", () => { hover = 0; drawImg(); drawHist(); });
+    this.draw = () => { drawImg(); drawHist(); }; this.draw();
+  },
+  show() { this.draw && this.draw(); },
+});
+
+/* ============ 13 fit ============ */
+def("fit", {
+  init() {
+    const seg = $("#ftSeg"); let draws = [], last = null; const g = PVG.makeRng(rseed());
+    for (const d of PVG.DISTRIBUTIONS) { const b = document.createElement("button"); b.type = "button"; b.textContent = d; b.dataset.d = d; b.onclick = () => { FIT.dist = d; draws = []; last = null; draw(); }; seg.appendChild(b); }
+    const draw = () => {
+      $$("button", seg).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.d === FIT.dist)));
+      const W = 820, H = 470, gg = ctx($("#ftCan"), W, H); gg.clearRect(0, 0, W, H);
+      let F; try { F = currentFit(1, FIT.dist); } catch (e) { $("#ftOut").innerHTML = `<span class="err">${e.message}</span>`; return; }
+      const sim = PVG.makeRng(0), S = new Float64Array(120000); for (let i = 0; i < S.length; i++) S[i] = F.fitted.sample(sim);
+      const x0 = 0, x1 = Math.max(320, Math.max(...F.height) * 1.25), hm = bins(F.height, 8, x0, x1), hd = bins(Array.from(S), 48, x0, x1);
+      const dm = hm.counts.map((n) => n / (F.height.length * hm.w)), dd = hd.counts.map((n) => n / (S.length * hd.w));
+      const ym = Math.max(...dm, ...dd) * 1.12;
+      const A = axes(gg, W, H, x0, x1, 0, ym, { xl: "cell length (pixels)", yl: "density", B: 64, noYt: true });
+      gg.globalAlpha = 0.75; gg.fillStyle = cssv("--plot-bar"); dm.forEach((d, k) => { if (d) gg.fillRect(A.X(hm.lo + k * hm.w) + 1, A.Y(d), A.X(hm.w) - A.X(0) - 2, A.Y(0) - A.Y(d)); }); gg.globalAlpha = 1;
+      gg.strokeStyle = cssv("--plot-fit"); gg.lineWidth = 3; gg.beginPath(); dd.forEach((d, k) => { const x = A.X(hd.lo + (k + 0.5) * hd.w); k ? gg.lineTo(x, A.Y(d)) : gg.moveTo(x, A.Y(d)); }); gg.stroke();
+      const yb = A.T + A.ph + 30;
+      for (const v of draws) { if (v < x0 || v > x1) continue; gg.strokeStyle = cssv("--burg"); gg.globalAlpha = 0.45; gg.lineWidth = 2; gg.beginPath(); gg.moveTo(A.X(v), yb - 8); gg.lineTo(A.X(v), yb + 8); gg.stroke(); }
+      gg.globalAlpha = 1;
+      if (last !== null && last >= x0 && last <= x1) { gg.fillStyle = cssv("--burg"); gg.beginPath(); gg.moveTo(A.X(last), yb - 10); gg.lineTo(A.X(last) - 7, yb - 22); gg.lineTo(A.X(last) + 7, yb - 22); gg.fill(); }
+      const names = { Normal: ["mean", "SD"], Exponential: ["mean"], Gamma: ["shape", "scale"], Poisson: ["λ"], Weibull: ["scale", "shape"] }[F.fitted.name];
+      $("#ftOut").innerHTML = `${F.fitted.name} fit to ${F.height.length} cells: ${F.fitted.params.map((p, i) => `${names[i]} ${fmt(p, 2)}`).join(", ")}.` +
+        (last !== null ? `<br>Last draw: <b>${fmt(last)} px</b>${last < 1 ? " (PlantVG rounds any step below 1 slice up to 1)" : ""}. ${draws.length} drawn, mean ${fmt(draws.reduce((s, v) => s + v, 0) / draws.length)} px.` : "<br>Draw some lengths to see where new cells fall.");
+    };
+    const take = (n) => { let F; try { F = currentFit(1, FIT.dist); } catch { return; } for (let i = 0; i < n; i++) { last = F.fitted.sample(g); draws.push(last); } draw(); };
+    $("#ftDraw").onclick = () => take(1); $("#ftDraw50").onclick = () => take(50); $("#ftClear").onclick = () => { draws = []; last = null; draw(); };
+    this.draw = draw; draw();
+  },
+  show() { this.draw && this.draw(); },
+});
+/* ============ 14 end caps ============ */
+def("caps", {
+  init() {
+    const NC = D.T.bounds.length, SHOW = Math.min(14, NC);
+    let seed = 4242, cols = [], depth = 0, buffer = 0, cursor = 0, playing = false, raf = 0, avg = 0, lf = 1, err = null;
+    const plan = () => {
+      lf = +$("#cpLF").value; $("#cpLFo").textContent = fmt(lf, 2);
+      const p = { ...BASE_P, length_factor: lf }, Dv = PVG.derive(p, D.T.H, D.T.W); depth = Dv.working; buffer = Dv.buffer;
+      let F; try { F = currentFit(lf); err = null; } catch (e) { err = e.message; cols = []; return; }
+      avg = F.avg; const g = PVG.makeRng(seed);
+      cols = [];
+      for (let i = 0; i < NC; i++) { const caps = []; let pos = PVG.mround(g.random() * avg); const first = pos;
+        while (pos <= depth) { if (pos >= 1) caps.push(pos); pos += Math.max(1, PVG.mround(F.fitted.sample(g))); }
+        cols.push({ caps, first }); }
+    };
+    const draw = () => {
+      const W = 760, H = 610, g = ctx($("#cpCan"), W, H); g.clearRect(0, 0, W, H);
+      if (err) { $("#cpOut").innerHTML = `<span class="err">${err}</span>`; return; }
+      const L = 60, R = 10, T = 14, B = 34, pw = W - L - R, ph = H - T - B, Y = (s) => T + ph - (s / depth) * ph, cw = pw / SHOW;
+      g.font = "14px Rubik, Arial, sans-serif"; g.fillStyle = cssv("--cap"); g.textAlign = "right"; g.textBaseline = "middle";
+      for (const t of niceTicks(0, depth, 5)) g.fillText(t, L - 8, Y(t));
+      g.save(); g.translate(16, T + ph / 2); g.rotate(-Math.PI / 2); g.textAlign = "center"; g.fillStyle = cssv("--ink"); g.fillText("slice along the stem", 0, 0); g.restore();
+      g.fillStyle = cssv("--alt"); g.fillRect(L, Y(buffer - 1), pw, Y(0) - Y(buffer - 1));
+      g.fillStyle = cssv("--cap"); g.textAlign = "left"; g.textBaseline = "bottom"; g.fillText("buffer, cropped at export", L + 6, Y(0) - 3);
+      let placed = 0;
+      for (let i = 0; i < SHOW; i++) {
+        const x = L + i * cw + cw * 0.18, w = cw * 0.64, cc = cols[i]; let lastCap = 0;
+        const evs = cc.caps.filter((s) => s <= cursor);
+        placed += evs.length;
+        for (let s = 1; s <= Math.min(cursor, depth); s++) {
+          if (cc.caps.includes(s)) lastCap = s;
+          const age = (s - lastCap) / avg; g.fillStyle = rgbStr([0.2, 0.42, 0.75], Math.min(0.75, 0.08 + age * 0.55));
+          { const y0 = Math.round(Y(s) * 2) / 2, y1 = Math.round(Y(s - 1) * 2) / 2; if (y1 > y0) g.fillRect(x, y0, w, y1 - y0); }
+        }
+        g.strokeStyle = cssv("--line"); g.lineWidth = 1; g.strokeRect(x, T, w, ph);
+        for (const s of evs) { g.fillStyle = cssv("--burg"); g.fillRect(x - 3, Y(s) - 3, w + 6, 6); }
+        if (cc.first >= 1 && cc.first <= cursor) { g.fillStyle = cssv("--ink"); g.textAlign = "center"; g.textBaseline = "top"; }
+      }
+      g.textAlign = "center"; g.textBaseline = "top"; g.fillStyle = cssv("--cap");
+      for (let i = 0; i < SHOW; i++) g.fillText(i + 1, L + i * cw + cw / 2, T + ph + 8);
+      if (cursor < depth) { g.strokeStyle = "#c9a227"; g.lineWidth = 2; g.setLineDash([6, 4]); g.beginPath(); g.moveTo(L, Y(cursor)); g.lineTo(L + pw, Y(cursor)); g.stroke(); g.setLineDash([]); }
+      // array
+      imgCanvas($("#cpArr"), NC, depth, 1, (j) => { const r = (j / NC) | 0, c = j % NC, s = depth - r; if (s > cursor) return c < SHOW ? [34, 52, 84] : [22, 34, 58]; return cols[c].caps.includes(s) ? [255, 255, 255] : c < SHOW ? [46, 70, 110] : [28, 44, 72]; });
+      const all = cols.reduce((s, c) => s + c.caps.length, 0);
+      $("#cpOut").innerHTML = `Slice <b>${Math.min(cursor, depth)}</b> of ${depth}. ${placed} caps placed in these ${SHOW} columns.<br>Average kept length ${fmt(avg)} px, so about ${fmt(depth / avg)} caps per column. ${all} caps across all ${NC} cells.`;
+    };
+    const tick = () => { if (!playing) return; cursor = Math.min(depth, cursor + 2); draw(); if (cursor >= depth) { playing = false; $("#cpPlay").textContent = "Replay"; return; } raf = requestAnimationFrame(tick); };
+    const play = () => { if (playing) { playing = false; $("#cpPlay").textContent = "Play"; return; } if (cursor >= depth) cursor = 0; playing = true; $("#cpPlay").textContent = "Pause"; if (reduced) { cursor = depth; playing = false; $("#cpPlay").textContent = "Replay"; draw(); return; } raf = requestAnimationFrame(tick); };
+    $("#cpPlay").onclick = play;
+    $("#cpStep").onclick = () => { playing = false; $("#cpPlay").textContent = "Play"; const nx = Math.min(...cols.slice(0, SHOW).flatMap((c) => c.caps.filter((s) => s > cursor)), depth); cursor = nx; draw(); };
+    $("#cpNew").onclick = () => { seed = rseed(); plan(); cursor = 0; playing = false; play(); };
+    $("#cpLF").oninput = () => { plan(); draw(); };
+    this.reset = () => { plan(); cursor = 0; draw(); if (!this.played) { this.played = true; setTimeout(() => { if (Hs.caps.on) play(); }, 400); } };
+    this.stop = () => { playing = false; $("#cpPlay").textContent = cursor >= depth ? "Replay" : "Play"; };
+  },
+  show() { this.on = true; this.reset(); }, hide() { this.on = false; this.stop && this.stop(); },
+});
+
+/* ============ 15 fillets ============ */
+def("fillets", {
+  init() {
+    const DZ = 100, LW = 16, GAP = 5, M = 14, NCOL = 3, W = 2 * M + NCOL * LW + (NCOL - 1) * GAP;
+    const caps = [[30, 74], [53], [20, 86]], c = $("#flCan");
+    const lum = (i) => [M + i * (LW + GAP), M + i * (LW + GAP) + LW - 1];
+    const draw = () => {
+      const t = +$("#flT").value, r = +$("#flR").value, show = $("#flShow").checked; $("#flTo").textContent = t; $("#flRo").textContent = r;
+      const F = caps.map((cs) => { const v = new Uint8Array(DZ); for (const s of cs) v[s - 1] = 1; return PVG.filletArrays(v, r, t); });
+      const type = new Uint8Array(W * DZ);
+      for (let k = 0; k < DZ; k++) for (let x = 0; x < W; x++) {
+        let solid = false, base = false, capp = false;
+        for (let i = 0; i < NCOL; i++) {
+          const [a, b] = lum(i), oa = a - t, ob = b + t; if (x < oa || x > ob) continue;
+          const dOut = Math.min(x - oa, ob - x) + 1, dIn = x >= a && x <= b ? Math.min(x - a, b - x) + 1 : 0;
+          const nO = Math.floor(F[i].subO[k]), nI = Math.floor(F[i].subI[k]), f = F[i].fill[k];
+          if (dOut > nO && (f || !(dIn > nI))) { solid = true; if (f && dIn > nI) capp = true; }
+          if (dOut > 0 && !(dIn > 0)) base = true;
+        }
+        type[(DZ - 1 - k) * W + x] = solid && base ? 1 : solid && capp ? 4 : solid ? 2 : base ? 3 : 0;
+      }
+      imgCanvas(c, W, DZ, 6, (j) => { const q = type[j]; if (q === 4) return [214, 200, 160]; if (q === 1 || (q === 2 && !show)) return [236, 229, 211]; if (q === 2) return [90, 169, 255]; if (q === 3 && show) return [192, 57, 79]; return [11, 35, 64]; });
+      
+      const thk = PVG.mround(t / 2);
+      $("#flOut").innerHTML = `Half wall <b>${thk}</b> + radius <b>${r}</b> = rounding starts <b>${thk + r}</b> slices from each cap.<br>The interior shrinks by up to ${r} px; the outer face pulls in by up to ${r + thk} px.<br>${caps.reduce((s, a) => s + a.length, 0)} caps in these three cells.`;
+    };
+    c.addEventListener("click", (e) => {
+      const [x, y] = evPos(e, c, W, DZ), k = DZ - Math.floor(y);
+      let best = -1, bd = 1e9; for (let i = 0; i < NCOL; i++) { const [a, b] = lum(i), d = x < a ? a - x : x > b ? x - b : 0; if (d < bd) { bd = d; best = i; } }
+      if (bd > 6) return; const cs = caps[best], near = cs.findIndex((s) => Math.abs(s - k) <= 4);
+      if (near >= 0) cs.splice(near, 1); else if (k > 2 && k < DZ - 1) cs.push(k);
+      draw();
+    });
+    $("#flT").oninput = draw; $("#flR").oninput = draw; $("#flShow").onchange = draw;
+    draw();
+  },
+});
+
+/* ============ 16 assemble ============ */
+def("assemble", {
+  init() {
+    V.as = makeViewer($("#asCanvas"), { dist: 1.0 });
+    const M = D.base, N = D.T.bounds.length, sl = $("#asN"); sl.max = N; sl.value = 0;
+    const cum = new Array(N + 1).fill(0); for (const v of M.owner) if (v) cum[v]++; for (let i = 1; i <= N; i++) cum[i] += cum[i - 1];
+    let raf = 0, timer = 0;
+    const draw = () => {
+      raf = 0; const n = +sl.value, cut = +$("#asCut").value; $("#asNo").textContent = `${n} / ${N}`; $("#asCutO").textContent = `${Math.round(cut * 100)}%`;
+      if (V.as) V.as.set(meshModel(M, { s: 2, color: "owner", maxOwner: Math.max(0, n), cutY: cut }), M.shape);
+      $("#asInfo").textContent = `${n} of ${N} cells\n${cum[n].toLocaleString()} wall voxels`; $("#asInfo").style.whiteSpace = "pre";
+      const T = D.T; const g = imgCanvas($("#asMap"), T.W, T.H, 2, (i) => { const l = T.lab[i]; if (l && l <= n) return hueRGB(l - 1).map((x) => x * 255); return T.mask[i] ? [70, 82, 100] : [16, 24, 38]; });
+      $("#asBusy").hidden = true;
+    };
+    const req = () => { if (!raf) raf = requestAnimationFrame(draw); };
+    sl.oninput = req; $("#asCut").oninput = req;
+    const stop = () => { clearInterval(timer); timer = 0; $("#asPlay").textContent = "Play"; };
+    $("#asPlay").onclick = () => { if (timer) return stop(); if (+sl.value >= N) sl.value = 0; $("#asPlay").textContent = "Pause";
+      timer = setInterval(() => { sl.value = +sl.value + 1; draw(); if (+sl.value >= N) stop(); }, reduced ? 1 : 160); };
+    this.stop = stop; this.play = () => $("#asPlay").click();
+    draw();
+  },
+  show() { V.as && V.as.start(); if (!this.played) { this.played = true; setTimeout(() => this.play && Hs.assemble.on && this.play(), 500); } this.on = true; },
+  hide() { this.on = false; V.as && V.as.stop(); this.stop && this.stop(); },
+});
+
+/* ============ 17 stack ============ */
+def("stack", {
+  init() {
+    const cache = { 2: D.base }; let dsf = 2;
+    const show = async () => {
+      if (!cache[dsf]) { $("#stOut").textContent = "Building…"; await sleep(20); cache[dsf] = await makeModel({ ...BASE_P, dsf }, D.base.seed); }
+      const M = cache[dsf], [Dd, Hh, Ww] = M.shape, z = $("#stZ"); z.max = Dd - 1; if (+z.value > Dd - 1) z.value = Math.floor(Dd / 2);
+      const Dv = M.derive, mb = (Dd * Hh * Ww) / 1e6;
+      $("#stOut").innerHTML = `Working volume <b>${Dv.working}</b> slices; the first <b>${Dv.buffer - 1}</b> are buffer and are cropped.<br>Edges trimmed by <b>${Dv.sb}</b> px (wall thickness + radius).<br>Output <b>${Dd} × ${Hh} × ${Ww}</b> voxels (slices × rows × columns), about ${fmt(mb)} MB as an 8-bit TIFF. ${Math.round(M.solid * 100)}% wall.`;
+      page();
+    };
+    const page = () => {
+      const M = cache[dsf], [Dd, Hh, Ww] = M.shape, z = +$("#stZ").value, k = Math.max(1, Math.round(300 / Ww));
+      $("#stZo").textContent = `${z + 1} / ${Dd}`;
+      imgCanvas($("#stSlice"), Ww, Hh, k, (i) => { const v = M.vol[z * Hh * Ww + i]; return [v, v, v]; });
+      $("#stSliceCap").textContent = `Page ${z + 1} of ${Dd}: ${Ww} × ${Hh} pixels. White is cell wall.`;
+      const xc = Ww >> 1, kl = Math.max(1, Math.round(300 / Hh));
+      const g = imgCanvas($("#stLong"), Hh, Dd, kl, (i) => { const r = i % Hh, zz = Dd - 1 - ((i / Hh) | 0), v = M.vol[zz * Hh * Ww + r * Ww + xc]; return [v, v, v]; });
+      g.fillStyle = "#ffc425"; g.fillRect(0, Dd - 1 - z, Hh, Math.max(0.6, 2 / kl));
+    };
+    $("#stZ").oninput = page;
+    $$("#stSeg button").forEach((b) => (b.onclick = () => { const old = cache[dsf].shape[0], frac = +$("#stZ").value / old; dsf = +b.dataset.d; $$("#stSeg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); show().then(() => { $("#stZ").value = Math.round(frac * cache[dsf].shape[0]); page(); }); }));
+    $("#stZ").max = D.base.shape[0] - 1; $("#stZ").value = Math.floor(D.base.shape[0] / 2);
+    show();
+  },
+});
+
+/* ============ 18 tweak ============ */
+def("tweak", {
+  init() {
+    V.tw = makeViewer($("#twCanvas"), { dist: 1.0 });
+    const sel = $("#twD"); sel.innerHTML = PVG.DISTRIBUTIONS.map((d) => `<option>${d}</option>`).join("");
+    let seed = D.base.seed, M = D.base, s = 2, raf = 0, busy = false, again = false, ms = 0;
+    const P = () => ({ ...BASE_P, wall_thickness: +$("#twT").value, wall_variation: +$("#twV").value, radius: +$("#twR").value, length_factor: +$("#twL").value, distribution: sel.value });
+    const labels = () => { $("#twTo").textContent = $("#twT").value; $("#twVo").textContent = "±" + $("#twV").value; $("#twRo").textContent = $("#twR").value; $("#twLo").textContent = fmt(+$("#twL").value, 2) + "×"; $("#twCHo").textContent = Math.round($("#twCH").value * 100) + "%"; $("#twCXo").textContent = Math.round($("#twCX").value * 100) + "%"; };
+    const mesh = () => { raf = 0; labels(); if (V.tw) V.tw.set(meshModel(M, { s, cutY: +$("#twCH").value, cutX: +$("#twCX").value }), M.shape); };
+    const gen = async () => {
+      if (busy) { again = true; return; } busy = true; $("#twBusy").hidden = false; await sleep(30);
+      const t0 = performance.now();
+      try {
+        M = await makeModel(P(), seed); ms = performance.now() - t0; s = bestStep(M, 450000); mesh();
+        $("#twOut").innerHTML = `${M.shape.join(" × ")} voxels, ${Math.round(M.solid * 100)}% wall.<br>Built in ${fmt(ms / 1000)} s from ${M.fit.height.length} cell lengths (${M.fit.fitted.name}). Seed ${seed}.<br>The seed stays fixed while you move sliders, so each change shows that parameter alone.`;
+      } catch (e) { $("#twOut").innerHTML = `<span class="err">${e.message}</span>`; }
+      busy = false; $("#twBusy").hidden = true; if (again) { again = false; gen(); }
+    };
+    for (const id of ["twT", "twV", "twR", "twL"]) { $("#" + id).oninput = labels; $("#" + id).onchange = gen; }
+    sel.onchange = gen;
+    for (const id of ["twCH", "twCX"]) $("#" + id).oninput = () => { if (!raf) raf = requestAnimationFrame(mesh); };
+    $("#twGen").onclick = () => { seed = rseed(); gen(); };
+    labels(); s = bestStep(M, 450000); mesh();
+    $("#twOut").innerHTML = `${M.shape.join(" × ")} voxels, ${Math.round(M.solid * 100)}% wall. Seed ${seed}.<br>Change a slider, then let go to rebuild the model.`;
+  },
+  show() { V.tw && V.tw.start(); }, hide() { V.tw && V.tw.stop(); },
+});
+
+/* ============ boot ============ */
+(function boot() {
+  const jump = $("#jump");
+  slides.forEach((s, i) => { const o = document.createElement("option"); o.value = String(i); o.textContent = `${i + 1}. ${s.dataset.title}`; jump.appendChild(o); });
+  jump.onchange = () => go(+jump.value);
+  $("#prev").onclick = () => go(cur - 1); $("#next").onclick = () => go(cur + 1);
+  $("#fs").onclick = async () => { try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); } catch { $("#fs").textContent = "Not available here"; setTimeout(() => ($("#fs").textContent = "Full screen"), 1800); } };
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest && e.target.closest("input,select,textarea")) return;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (["ArrowRight", "PageDown"].includes(e.key) || (e.key === " " && e.target === document.body)) { e.preventDefault(); go(cur + 1); }
+    else if (["ArrowLeft", "PageUp"].includes(e.key)) { e.preventDefault(); go(cur - 1); }
+    else if (e.key === "Home") go(0); else if (e.key === "End") go(slides.length - 1);
+  });
+  let sx = null; $("#stage").addEventListener("touchstart", (e) => { if (e.target.closest("canvas,input,.grid12,svg")) { sx = null; return; } sx = e.touches[0].clientX; }, { passive: true });
+  $("#stage").addEventListener("touchend", (e) => { if (sx === null) return; const dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx) > 70 && !ST.flow) go(cur + (dx < 0 ? 1 : -1)); sx = null; });
+  let rz; window.addEventListener("resize", () => { layout(); clearTimeout(rz); rz = setTimeout(() => { const h = Hs[slides[cur].dataset.key]; h && h.inited && h.show && h.show(); }, 160); });
+  layout();
+  READY = (async () => {
+    const [t, l] = await Promise.all([decode(EXAMPLE.t), decode(EXAMPLE.l)]);
+    D.T = prep(t); D.L = prep(l); D.hc = PVG.cellHeights(D.L.bounds, D.L.H); D.heights = D.hc.heights;
+    D.base = await makeModel(BASE_P, 2024, { owner: true });
+  })().catch((e) => { console.error(e); $("#coverInfo").textContent = "Couldn't build the example model: " + e.message; throw e; });
+  const h = parseInt((location.hash || "").slice(1), 10);
+  go(Number.isFinite(h) ? h - 1 : 0);
+})();
+
+</script>
+</body>
+</html>
